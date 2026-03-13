@@ -14,17 +14,35 @@ English: The screenshots below are sanitized demo captures based on the real UI.
 
 ![Codex Relay dashboard overview](docs/images/dashboard-overview.png)
 
-한국어: 왼쪽에는 최근 스레드 목록이, 오른쪽에는 선택된 대화와 즉시 입력 가능한 `Conversation` 입력창이 표시됩니다.
+한국어: 데스크톱에서는 `Threads`, `Conversation`, `Access` 3패널이 동시에 보입니다. 스레드 목록, 현재 대화, 알림/접속 요약을 한 화면에서 함께 볼 수 있습니다.
 
-English: The left panel shows recent threads, while the right panel shows the selected conversation and the inline `Conversation` composer.
+English: On desktop, the UI shows `Threads`, `Conversation`, and `Access` side by side so you can inspect history, send the next message, and check link/alert status at once.
+
+### Mobile Access Tabs / 모바일 접근 탭
+
+![Codex Relay mobile access tabs](docs/images/mobile-access.png)
+
+한국어: 모바일에서는 `Threads / Conversation / Access` 탭으로 좁은 화면을 나눠 씁니다. `Access > QR Access` 탭에서 QR 로그인 링크와 토큰 복사를 바로 열 수 있습니다.
+
+English: On mobile, `Threads / Conversation / Access` tabs split the dashboard into focused views. `Access > QR Access` exposes QR-ready links and quick token sharing.
 
 ### Local Pairing Page / 로컬 페어링 페이지
 
 ![Codex Relay local pairing page](docs/images/pairing-overview.png)
 
-한국어: `http://localhost:3210/pair`에서는 현재 대시보드 토큰 확인, 토큰 재발급, 토큰 포함 링크 복사, QR 코드 로그인 준비를 한 번에 처리할 수 있습니다.
+한국어: `http://localhost:3210/pair`는 로컬 PC 전용 페어링 화면입니다. 현재 대시보드 토큰 확인, 토큰 재발급, 토큰 포함 링크 복사, QR 코드 로그인을 한 번에 처리할 수 있습니다.
 
-English: `http://localhost:3210/pair` provides the current dashboard token, token regeneration, tokenized copy links, and QR-based login setup in one place.
+English: `http://localhost:3210/pair` is the host-only pairing page. It bundles token viewing, token rotation, tokenized links, and QR-based login into one screen.
+
+## UI Tour / UI 둘러보기
+
+| Area | 한국어 설명 | English Description |
+| --- | --- | --- |
+| `Threads` | 최근 스레드를 카드형 목록으로 보여 주며, 제목·요약·워크스페이스·메시지 수를 빠르게 훑어볼 수 있습니다. | Shows recent threads as cards with title, summary, workspace, and message count for quick scanning. |
+| `Conversation` | 선택한 스레드의 보이는 대화만 표시하고, 같은 패널 아래에서 바로 다음 메시지를 보낼 수 있습니다. | Shows only visible conversation history for the selected thread and keeps the next-message composer in the same panel. |
+| `Access` | 기본 워크스페이스, 공개 URL, Discord 알림 상태를 요약하고 `Alerts / QR Access` 탭으로 접속 도구를 나눠 보여줍니다. | Summarizes the default workspace, public URL, and Discord alert state, then splits access tools into `Alerts / QR Access` tabs. |
+| `QR Access` | 로컬 브라우저에서는 토큰 복사, 재발급, QR 링크 공유를 바로 처리하고, 원격 브라우저에서는 로컬 PC에서 열라는 안내를 보여줍니다. | On the host browser it exposes token copy, rotation, and QR link sharing; on remote browsers it shows a host-only notice. |
+| `Mobile Tabs` | 좁은 화면에서는 `Threads / Conversation / Access` 탭으로 섹션을 전환해 필요한 부분만 크게 봅니다. | On small screens, `Threads / Conversation / Access` tabs switch between focused sections instead of squeezing everything into one column. |
 
 ## Why This Exists / 이 프로젝트가 하는 일
 
