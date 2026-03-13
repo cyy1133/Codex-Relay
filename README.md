@@ -253,6 +253,6 @@ remove-startup.cmd       Removes startup registration
 
 ## License / 라이선스
 
-한국어: 현재 저장소에는 별도 라이선스 파일이 없습니다. 공개 배포 방침을 정할 계획이라면 `LICENSE` 파일을 추가하는 편이 좋습니다.
+한국어: 이 저장소는 `Apache-2.0`으로 배포됩니다. 무료로 사용, 수정, 재배포할 수 있지만, 재배포 시에는 `LICENSE`와 `NOTICE`의 저작자 표기를 유지해야 합니다. 이 저장소의 표기 이름은 `cyy1133`입니다.
 
-English: The repository does not currently include a dedicated license file. If you plan to distribute it publicly, adding a `LICENSE` file is recommended.
+English: This repository is distributed under `Apache-2.0`. You can use, modify, and redistribute it for free, but redistributed copies should keep the attribution carried in `LICENSE` and `NOTICE`. The attribution name used in this repository is `cyy1133`.
