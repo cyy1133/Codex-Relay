@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Codex Relay</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="ambient ambient-a"></div>
+    <div class="ambient ambient-b"></div>
+    <main class="shell">
+      <section class="login-card" id="login-card">
+        <p class="eyebrow">Remote Access</p>
+        <h1>Codex Relay</h1>
+        <p class="lede">
+          Open your local Codex threads from another device, inspect the visible conversation,
+          and queue new prompts without exposing transient reasoning traces.
+        </p>
+        <form id="login-form">
+          <label class="field">
+            <span>Access Token</span>
+            <input id="token-input" type="password" autocomplete="off" placeholder="Paste the dashboard token">
+          </label>
+          <button class="primary wide" type="submit">Open Dashboard</button>
+          <p class="hint" id="login-error"></p>
+        </form>
+      </section>
+
+      <section class="app hidden" id="app">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Codex Remote Control</p>
+            <h1>Relay</h1>
+          </div>
+          <div class="topbar-actions">
+            <button class="ghost" id="refresh-button" type="button">Refresh</button>
+            <button class="ghost" id="settings-button" type="button">Settings</button>
+          </div>
+        </header>
+
+        <section class="status-strip" id="status-strip"></section>
+
+        <div class="layout">
+          <aside class="panel threads-panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Threads</p>
+                <h2>Recent Conversations</h2>
+              </div>
+            </div>
+            <input class="search" id="thread-search" type="search" placeholder="Search threads">
+            <div class="thread-list" id="thread-list"></div>
+          </aside>
+
+          <section class="panel conversation-panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Conversation</p>
+                <h2 id="thread-title">New Chat</h2>
+              </div>
+              <div class="conversation-head-side">
+                <button class="ghost" id="new-thread-button" type="button">New Chat</button>
+                <div class="meta" id="thread-meta"></div>
+              </div>
+            </div>
+            <div class="message-list" id="message-list">
+              <div class="empty-state">
+                <p>Type a message below to start a new thread, or tap a thread on the left to continue it.</p>
+              </div>
+            </div>
+            <form id="composer-form" class="chat-form">
+              <p class="hint composer-target" id="composer-target"></p>
+            <label class="field">
+                <span>Message</span>
+                <textarea id="prompt-input" rows="4" placeholder="Type a message to Codex."></textarea>
+            </label>
+              <div class="chat-actions">
+              <p class="hint" id="composer-hint">
+                  Press Enter to send. Use Shift+Enter for a new line.
+              </p>
+                <button class="primary" type="submit">Send</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <dialog class="settings-dialog" id="settings-dialog">
+      <form id="settings-form" method="dialog">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Settings</p>
+            <h2>Notifications And Links</h2>
+          </div>
+        </div>
+        <label class="field">
+          <span>Default Workspace</span>
+          <select id="settings-workspace"></select>
+        </label>
+        <label class="field">
+          <span>Public Dashboard URL</span>
+          <input id="public-base-url" type="url" placeholder="http://your-hostname:3210">
+        </label>
+        <label class="field">
+          <span>Discord Bot Token</span>
+          <input id="bot-token-input" type="password" autocomplete="new-password" placeholder="Leave blank to keep current token">
+        </label>
+        <p class="hint" id="bot-token-status"></p>
+        <label class="field">
+          <span>Discord Channel ID</span>
+          <input id="channel-id-input" type="text" inputmode="numeric" placeholder="123456789012345678">
+        </label>
+        <label class="field">
+          <span>Discord Webhook URL</span>
+          <input id="webhook-input" type="url" placeholder="Optional fallback webhook">
+        </label>
+        <label class="toggle">
+          <input id="notify-toggle" type="checkbox">
+          <span>Send a Discord alert when a job completes or fails.</span>
+        </label>
+        <p class="hint" id="settings-hint">
+          Bot delivery needs both a bot token and a target channel ID. The public URL is used for deep links in the alert.
+        </p>
+        <div class="dialog-actions">
+          <button class="ghost" type="button" id="close-settings">Close</button>
+          <button class="primary" type="submit">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
