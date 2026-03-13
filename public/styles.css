@@ -34,6 +34,10 @@ body {
   font-family: var(--body);
 }
 
+a {
+  color: var(--accent);
+}
+
 .ambient {
   position: fixed;
   inset: auto;
@@ -82,6 +86,79 @@ body {
   padding: 2.4rem;
 }
 
+.pair-shell {
+  width: min(1120px, calc(100vw - 2rem));
+  margin: 1rem auto;
+}
+
+.pair-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.pair-card {
+  padding: 1.4rem;
+}
+
+.pair-sidebar {
+  display: grid;
+  gap: 1rem;
+  align-self: start;
+}
+
+.pair-actions {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.pair-token-row,
+.pair-link-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.pair-token-row input,
+.pair-link-row input {
+  flex: 1;
+}
+
+.pair-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.pair-link-card {
+  display: grid;
+  gap: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.qr-frame {
+  display: grid;
+  place-items: center;
+  min-height: 280px;
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.qr-frame img {
+  width: min(100%, 280px);
+  height: auto;
+  border-radius: 12px;
+}
+
+.pair-status {
+  min-height: 1.4rem;
+  margin: 0;
+}
+
 .eyebrow {
   margin: 0 0 0.6rem;
   font: 600 0.74rem/1 var(--headline);
@@ -96,7 +173,9 @@ strong,
 button,
 select,
 input,
-textarea {
+textarea,
+a.ghost,
+a.primary {
   font-family: var(--headline);
 }
 
@@ -131,13 +210,19 @@ h2 {
 input,
 textarea,
 select,
-button {
+button,
+a.ghost,
+a.primary {
   border-radius: var(--radius-sm);
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: var(--ink);
   background: rgba(255, 255, 255, 0.04);
   padding: 0.9rem 1rem;
   font-size: 0.95rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
 }
 
 textarea {
@@ -145,12 +230,16 @@ textarea {
   min-height: 8rem;
 }
 
-button {
+button,
+a.ghost,
+a.primary {
   cursor: pointer;
   transition: transform 150ms ease, background 150ms ease, border-color 150ms ease;
 }
 
-button:hover {
+button:hover,
+a.ghost:hover,
+a.primary:hover {
   transform: translateY(-1px);
 }
 
@@ -404,6 +493,10 @@ button:hover {
     grid-template-columns: 1fr;
   }
 
+  .pair-grid {
+    grid-template-columns: 1fr;
+  }
+
   .thread-list {
     max-height: 32vh;
   }
@@ -428,6 +521,12 @@ button:hover {
   .chat-actions,
   .dialog-actions,
   .panel-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pair-token-row,
+  .pair-link-row {
     flex-direction: column;
     align-items: stretch;
   }

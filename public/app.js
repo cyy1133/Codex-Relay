@@ -17,6 +17,7 @@ const appShell = document.querySelector("#app");
 const loginForm = document.querySelector("#login-form");
 const tokenInput = document.querySelector("#token-input");
 const loginError = document.querySelector("#login-error");
+const pairingEntry = document.querySelector("#pairing-entry");
 const threadList = document.querySelector("#thread-list");
 const threadTitle = document.querySelector("#thread-title");
 const threadMeta = document.querySelector("#thread-meta");
@@ -95,13 +96,28 @@ function relativeTime(value) {
   return `${Math.round(deltaHours / 24)}d ago`;
 }
 
+function isLocalBrowser() {
+  const host = window.location.hostname.toLowerCase();
+  return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
+}
+
 function updateUrl(threadId) {
   const nextUrl = new URL(window.location.href);
+  nextUrl.searchParams.delete("token");
   if (threadId) {
     nextUrl.searchParams.set("thread", threadId);
   } else {
     nextUrl.searchParams.delete("thread");
   }
+  history.replaceState({}, "", nextUrl);
+}
+
+function clearTokenFromUrl() {
+  const nextUrl = new URL(window.location.href);
+  if (!nextUrl.searchParams.has("token")) {
+    return;
+  }
+  nextUrl.searchParams.delete("token");
   history.replaceState({}, "", nextUrl);
 }
 
@@ -320,6 +336,7 @@ loginForm.addEventListener("submit", async (event) => {
   try {
     await bootstrap();
     localStorage.setItem("codexRelayToken", state.token);
+    clearTokenFromUrl();
   } catch (error) {
     loginError.textContent = error.message;
   }
@@ -452,8 +469,17 @@ settingsForm.addEventListener("submit", async (event) => {
 
 if (state.token) {
   tokenInput.value = state.token;
-  bootstrap().catch(() => {
-    setLoggedIn(false);
-    localStorage.removeItem("codexRelayToken");
-  });
+  bootstrap()
+    .then(() => {
+      localStorage.setItem("codexRelayToken", state.token);
+      clearTokenFromUrl();
+    })
+    .catch(() => {
+      setLoggedIn(false);
+      localStorage.removeItem("codexRelayToken");
+    });
+}
+
+if (pairingEntry && isLocalBrowser()) {
+  pairingEntry.classList.remove("hidden");
 }

@@ -5,5 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
   }
 }

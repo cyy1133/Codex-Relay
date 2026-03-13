@@ -34,6 +34,12 @@ Remove Windows Startup entry:
 remove-startup.cmd
 ```
 
+Open the local pairing page:
+
+```text
+http://localhost:3210/pair
+```
+
 When the server starts, it prints:
 
 - the local URL
@@ -73,6 +79,19 @@ Using `your-hostname:3210` only works if all of these are true:
 - port forwarding or reverse proxy is configured correctly
 
 If you want a cleaner public URL, put this server behind a reverse proxy or a tunnel.
+
+## Pairing
+
+`/pair` is available only on the Codex PC itself.
+
+It provides:
+
+- the current dashboard token
+- one-click copy for the token and tokenized links
+- QR codes for LAN, public, and local access links
+- token regeneration
+
+Tokenized links are stripped back out of the browser address bar after a successful login.
 
 ## Security
 

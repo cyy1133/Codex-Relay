@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Codex Relay Pairing</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="ambient ambient-a"></div>
+    <div class="ambient ambient-b"></div>
+    <main class="pair-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Local Pairing</p>
+          <h1>Connect A Device</h1>
+        </div>
+        <div class="topbar-actions">
+          <a class="ghost" href="/">Back To Dashboard</a>
+        </div>
+      </header>
+
+      <div class="pair-grid">
+        <section class="panel pair-card pair-sidebar">
+          <div>
+            <p class="eyebrow">Access Token</p>
+            <h2>Current Login Token</h2>
+            <p class="hint">
+              This page works only on the Codex PC. Scan a QR code or copy the token to another device.
+            </p>
+          </div>
+
+          <div class="pair-token-row">
+            <input id="pair-token" type="text" readonly>
+            <button class="ghost" id="copy-token-button" type="button">Copy Token</button>
+          </div>
+
+          <div class="pair-actions">
+            <button class="primary" id="regenerate-token-button" type="button">Regenerate Token</button>
+            <p class="hint">
+              Regenerating the token invalidates future requests from devices that still use the old token.
+            </p>
+          </div>
+
+          <p class="hint pair-status" id="pair-status"></p>
+        </section>
+
+        <section class="panel pair-card">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">QR Access</p>
+              <h2>Scan And Open</h2>
+            </div>
+          </div>
+          <div class="pair-links" id="pair-links"></div>
+        </section>
+      </div>
+    </main>
+
+    <script type="module" src="/pair.js"></script>
+  </body>
+</html>

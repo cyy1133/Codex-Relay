@@ -6,6 +6,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import QRCode from "qrcode";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CODEX_HOME = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
@@ -20,6 +21,7 @@ const HOST = process.env.HOST || "0.0.0.0";
 const MAX_THREADS = 50;
 const DEFAULT_WORKSPACE = __dirname;
 const CMD_EXE = process.env.ComSpec || "cmd.exe";
+const LOOPBACK_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 
 let settings = null;
 let sessionFileMap = new Map();
@@ -73,17 +75,28 @@ function normalizeBaseUrl(value) {
   return trimmed.replace(/\/+$/, "");
 }
 
-function buildDashboardUrl(threadId = "") {
-  const baseUrl = normalizeBaseUrl(settings.publicBaseUrl) || `http://localhost:${PORT}`;
+function buildUrl(baseUrl, params = {}) {
+  const normalized = normalizeBaseUrl(baseUrl);
+  if (!normalized) {
+    return "";
+  }
   try {
-    const url = new URL(baseUrl);
-    if (threadId) {
-      url.searchParams.set("thread", threadId);
+    const url = new URL(normalized);
+    for (const [key, value] of Object.entries(params)) {
+      if (value === undefined || value === null || value === "") {
+        continue;
+      }
+      url.searchParams.set(key, value);
     }
     return url.toString();
   } catch {
-    return baseUrl;
+    return normalized;
   }
+}
+
+function buildDashboardUrl(threadId = "") {
+  const baseUrl = normalizeBaseUrl(settings.publicBaseUrl) || `http://localhost:${PORT}`;
+  return buildUrl(baseUrl, { thread: threadId });
 }
 
 function formatTimestamp(value) {
@@ -161,6 +174,58 @@ function guessContentType(filePath) {
     return "image/png";
   }
   return "application/octet-stream";
+}
+
+function isLoopbackAddress(value) {
+  return LOOPBACK_ADDRESSES.has(String(value || "").toLowerCase());
+}
+
+function isLocalRequest(req) {
+  return isLoopbackAddress(req.socket.remoteAddress);
+}
+
+function isPrivateIpv4(value) {
+  if (!value || typeof value !== "string") {
+    return false;
+  }
+  if (value.startsWith("10.") || value.startsWith("192.168.")) {
+    return true;
+  }
+  const match = value.match(/^172\.(\d+)\./);
+  if (!match) {
+    return false;
+  }
+  const octet = Number(match[1]);
+  return octet >= 16 && octet <= 31;
+}
+
+function getLanBaseUrls() {
+  const interfaces = os.networkInterfaces();
+  const privateUrls = [];
+  const otherUrls = [];
+
+  for (const entries of Object.values(interfaces)) {
+    for (const entry of entries || []) {
+      if (!entry || entry.family !== "IPv4" || entry.internal || !entry.address) {
+        continue;
+      }
+      const url = `http://${entry.address}:${PORT}`;
+      if (isPrivateIpv4(entry.address)) {
+        privateUrls.push(url);
+      } else {
+        otherUrls.push(url);
+      }
+    }
+  }
+
+  return Array.from(new Set([...privateUrls, ...otherUrls]));
+}
+
+function disconnectEventClients() {
+  for (const client of sseClients) {
+    client.end();
+  }
+  sseClients.clear();
 }
 
 function extractToken(req, url) {
@@ -484,6 +549,60 @@ function getPublicSettings() {
   };
 }
 
+async function buildPairingPayload() {
+  const localhostUrl = `http://localhost:${PORT}`;
+  const lanBaseUrls = getLanBaseUrls();
+  const publicBaseUrl = normalizeBaseUrl(settings.publicBaseUrl);
+  const rawLinks = [
+    {
+      id: "lan",
+      label: "Same Wi-Fi",
+      description: "Scan this on a phone connected to the same local network as the Codex PC.",
+      baseUrl: lanBaseUrls[0] || ""
+    },
+    {
+      id: "public",
+      label: "Public URL",
+      description: "Use this only if your public domain or tunnel already points at the dashboard.",
+      baseUrl: publicBaseUrl
+    },
+    {
+      id: "local",
+      label: "This PC",
+      description: "Useful for quick copy-paste on the Codex machine itself.",
+      baseUrl: localhostUrl
+    }
+  ];
+
+  const links = [];
+  const seen = new Set();
+
+  for (const link of rawLinks) {
+    const url = buildUrl(link.baseUrl, { token: settings.authToken });
+    if (!url || seen.has(url)) {
+      continue;
+    }
+    seen.add(url);
+    links.push({
+      ...link,
+      url,
+      qrDataUrl: await QRCode.toDataURL(url, {
+        errorCorrectionLevel: "M",
+        margin: 1,
+        width: 280
+      })
+    });
+  }
+
+  return {
+    token: settings.authToken,
+    publicBaseUrl,
+    localhostUrl,
+    lanBaseUrls,
+    links
+  };
+}
+
 function getJobsSnapshot() {
   return jobs
     .slice()
@@ -792,6 +911,41 @@ async function handleApi(req, res, url) {
     });
   }
 
+  if (url.pathname === "/api/pairing") {
+    if (!isLocalRequest(req)) {
+      return sendJson(res, 403, {
+        error: "Pairing is available only from the local machine."
+      });
+    }
+    if (req.method !== "GET") {
+      return sendJson(res, 405, {
+        error: "Method not allowed"
+      });
+    }
+    return sendJson(res, 200, {
+      pairing: await buildPairingPayload()
+    });
+  }
+
+  if (url.pathname === "/api/pairing/regenerate") {
+    if (!isLocalRequest(req)) {
+      return sendJson(res, 403, {
+        error: "Pairing is available only from the local machine."
+      });
+    }
+    if (req.method !== "POST") {
+      return sendJson(res, 405, {
+        error: "Method not allowed"
+      });
+    }
+    settings.authToken = crypto.randomBytes(24).toString("hex");
+    await saveSettings();
+    disconnectEventClients();
+    return sendJson(res, 200, {
+      pairing: await buildPairingPayload()
+    });
+  }
+
   if (!isAuthorized(req, url)) {
     return sendJson(res, 401, {
       error: "Unauthorized"
@@ -886,6 +1040,18 @@ async function handleApi(req, res, url) {
 
 async function handleRequest(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+
+  if (url.pathname === "/pair" || url.pathname === "/pair.js") {
+    if (!isLocalRequest(req)) {
+      return sendText(res, 403, "Pairing is available only from the local machine.");
+    }
+    const staticPath = url.pathname === "/pair" ? "/pair.html" : url.pathname;
+    const served = await serveStatic(res, staticPath);
+    if (!served) {
+      sendText(res, 404, "Not found");
+    }
+    return;
+  }
 
   if (url.pathname.startsWith("/api/")) {
     try {
