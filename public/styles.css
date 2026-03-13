@@ -415,6 +415,8 @@ a.primary:hover {
 
 .thread-card {
   width: 100%;
+  display: grid;
+  gap: 0.75rem;
   text-align: left;
   background: rgba(255, 255, 255, 0.03);
   border-radius: var(--radius-md);
@@ -430,36 +432,53 @@ a.primary:hover {
 
 .thread-card-top,
 .thread-card-bottom {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: flex-start;
-  flex-wrap: wrap;
-  gap: 1rem;
+  gap: 0.75rem 1rem;
   min-width: 0;
 }
 
 .thread-card-top strong,
-.thread-card-bottom span:first-child,
 .meta span,
 .info-card strong,
 .status-card span {
   min-width: 0;
-  overflow-wrap: anywhere;
 }
 
 .thread-card-top strong {
-  flex: 1 1 14rem;
   margin: 0;
 }
 
-.thread-card-top span:last-child,
-.thread-card-bottom span:last-child {
-  flex: 0 0 auto;
+.thread-title,
+.thread-preview,
+.thread-workspace,
+.thread-time,
+.thread-count {
+  min-width: 0;
+}
+
+.thread-title,
+.thread-preview {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+.thread-workspace {
+  overflow-wrap: anywhere;
+}
+
+.thread-time,
+.thread-count {
+  justify-self: end;
   white-space: nowrap;
 }
 
 .thread-card p {
-  margin: 0.75rem 0;
+  margin: 0;
+}
+
+.thread-preview {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
@@ -735,8 +754,18 @@ a.primary:hover {
     gap: 0.65rem;
   }
 
+  .thread-card-top,
+  .thread-card-bottom {
+    grid-template-columns: 1fr;
+  }
+
+  .thread-time,
+  .thread-count {
+    justify-self: start;
+  }
+
   .thread-card-top strong,
-  .thread-card-bottom span:first-child,
+  .thread-workspace,
   .meta,
   .status-card span {
     max-width: 100%;

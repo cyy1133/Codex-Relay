@@ -354,10 +354,17 @@ function clearSelectedThread() {
 }
 
 function renderThreads() {
-  const filtered = state.threads.filter((thread) => {
-    const haystack = `${thread.title} ${thread.firstUserMessage} ${thread.lastAssistantMessage}`.toLowerCase();
-    return haystack.includes(state.searchText.toLowerCase());
-  });
+  const filtered = state.threads
+    .filter((thread) => {
+      const haystack = `${thread.title} ${thread.firstUserMessage} ${thread.lastAssistantMessage}`.toLowerCase();
+      return haystack.includes(state.searchText.toLowerCase());
+    })
+    .slice()
+    .sort((left, right) => {
+      const leftTime = new Date(left.updatedAt || left.createdAt || 0).getTime() || 0;
+      const rightTime = new Date(right.updatedAt || right.createdAt || 0).getTime() || 0;
+      return rightTime - leftTime;
+    });
 
   if (!filtered.length) {
     threadList.innerHTML = `<div class="empty-state"><p>No matching threads.</p></div>`;
@@ -370,13 +377,13 @@ function renderThreads() {
       return `
         <button class="${activeClass}" data-thread-id="${escapeAttr(thread.id)}" type="button">
           <div class="thread-card-top">
-            <strong>${escapeHtml(thread.title || "Untitled thread")}</strong>
-            <span>${escapeHtml(relativeTime(thread.updatedAt))}</span>
+            <strong class="thread-title">${escapeHtml(thread.title || "Untitled thread")}</strong>
+            <span class="thread-time">${escapeHtml(relativeTime(thread.updatedAt))}</span>
           </div>
-          <p>${escapeHtml(thread.firstUserMessage || "No prompt yet")}</p>
+          <p class="thread-preview">${escapeHtml(thread.firstUserMessage || "No prompt yet")}</p>
           <div class="thread-card-bottom">
-            <span>${escapeHtml(thread.cwd || "workspace unknown")}</span>
-            <span>${thread.messageCount || 0} msgs</span>
+            <span class="thread-workspace">${escapeHtml(thread.cwd || "workspace unknown")}</span>
+            <span class="thread-count">${thread.messageCount || 0} msgs</span>
           </div>
         </button>
       `;
