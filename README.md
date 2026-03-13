@@ -18,13 +18,13 @@ English: The screenshots below are sanitized demo captures based on the real UI.
 
 English: On desktop, the UI shows `Threads`, `Conversation`, and `Access` side by side so you can inspect history, send the next message, and check link/alert status at once.
 
-### Mobile Access Tabs / 모바일 접근 탭
+### Mobile Threads View / 모바일 스레드 화면
 
-![Codex Relay mobile access tabs](docs/images/mobile-access.png)
+![Codex Relay mobile thread list](docs/images/mobile-threads.png)
 
-한국어: 모바일에서는 `Threads / Conversation / Access` 탭으로 좁은 화면을 나눠 씁니다. `Access > QR Access` 탭에서 QR 로그인 링크와 토큰 복사를 바로 열 수 있습니다.
+한국어: 모바일에서는 `Threads` 탭이 가장 최근에 업데이트된 대화를 맨 위로 올리고, 시간·워크스페이스·메시지 수를 세로로 정리해 좁은 화면에서도 카드가 깨지지 않게 보여 줍니다.
 
-English: On mobile, `Threads / Conversation / Access` tabs split the dashboard into focused views. `Access > QR Access` exposes QR-ready links and quick token sharing.
+English: On mobile, the `Threads` tab keeps the most recently updated conversation at the top and stacks time, workspace, and message count vertically so cards stay readable on narrow screens.
 
 ### Local Pairing Page / 로컬 페어링 페이지
 
@@ -38,7 +38,7 @@ English: `http://localhost:3210/pair` is the host-only pairing page. It bundles 
 
 | Area | 한국어 설명 | English Description |
 | --- | --- | --- |
-| `Threads` | 최근 스레드를 카드형 목록으로 보여 주며, 제목·요약·워크스페이스·메시지 수를 빠르게 훑어볼 수 있습니다. | Shows recent threads as cards with title, summary, workspace, and message count for quick scanning. |
+| `Threads` | 최근에 갱신된 스레드부터 카드형 목록으로 보여 주며, 모바일에서는 제목·요약·워크스페이스·메시지 수를 세로로 정리해 빠르게 훑어볼 수 있습니다. | Shows threads as newest-first cards, and on mobile it stacks title, summary, workspace, and message count vertically for fast scanning. |
 | `Conversation` | 선택한 스레드의 보이는 대화만 표시하고, 같은 패널 아래에서 바로 다음 메시지를 보낼 수 있습니다. | Shows only visible conversation history for the selected thread and keeps the next-message composer in the same panel. |
 | `Access` | 기본 워크스페이스, 공개 URL, Discord 알림 상태를 요약하고 `Alerts / QR Access` 탭으로 접속 도구를 나눠 보여줍니다. | Summarizes the default workspace, public URL, and Discord alert state, then splits access tools into `Alerts / QR Access` tabs. |
 | `QR Access` | 로컬 브라우저에서는 토큰 복사, 재발급, QR 링크 공유를 바로 처리하고, 원격 브라우저에서는 로컬 PC에서 열라는 안내를 보여줍니다. | On the host browser it exposes token copy, rotation, and QR link sharing; on remote browsers it shows a host-only notice. |
@@ -69,8 +69,8 @@ English:
   English: The `Conversation` panel is the only composer. If a thread is selected, the message resumes it; otherwise it starts a new thread.
 
 - `Thread history and search`
-  한국어: 최근 스레드 제목, 첫 사용자 메시지, 마지막 응답 시각, 워크스페이스 경로, 메시지 수를 목록으로 보여 주며 검색창으로 빠르게 필터링할 수 있습니다.
-  English: The thread list shows title, first user message, last activity time, workspace path, and message count, with instant filtering via search.
+  한국어: 최근 스레드를 마지막 갱신 시각 기준으로 위에서부터 정렬해 보여 주며, 제목, 첫 사용자 메시지, 마지막 응답 시각, 워크스페이스 경로, 메시지 수를 검색창과 함께 빠르게 훑어볼 수 있습니다. 모바일에서는 카드 메타데이터가 세로로 쌓여 글자가 깨지지 않습니다.
+  English: The thread list is ordered by the latest update time, then shows title, first user message, last activity time, workspace path, and message count with instant search filtering. On mobile, card metadata stacks vertically so text does not collapse into broken columns.
 
 - `Queue-based execution`
   한국어: 새 요청은 `codex exec`, 기존 스레드 이어쓰기는 `codex exec resume`으로 실행되며, 내부 큐가 순차 처리해서 로컬 환경을 안정적으로 유지합니다.
