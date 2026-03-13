@@ -45,8 +45,14 @@
 
         <section class="status-strip" id="status-strip"></section>
 
-        <div class="layout">
-          <aside class="panel threads-panel">
+        <nav class="layout-tabs" id="layout-tabs" aria-label="Dashboard sections">
+          <button class="tab-chip active" data-layout-tab="threads" type="button">Threads</button>
+          <button class="tab-chip" data-layout-tab="conversation" type="button">Conversation</button>
+          <button class="tab-chip" data-layout-tab="access" type="button">Access</button>
+        </nav>
+
+        <div class="layout" id="layout">
+          <aside class="panel threads-panel" data-panel="threads">
             <div class="panel-head">
               <div>
                 <p class="eyebrow">Threads</p>
@@ -57,7 +63,7 @@
             <div class="thread-list" id="thread-list"></div>
           </aside>
 
-          <section class="panel conversation-panel">
+          <section class="panel conversation-panel" data-panel="conversation">
             <div class="panel-head">
               <div>
                 <p class="eyebrow">Conversation</p>
@@ -87,6 +93,73 @@
               </div>
             </form>
           </section>
+
+          <aside class="panel access-panel" data-panel="access">
+            <div class="panel-head compact">
+              <div>
+                <p class="eyebrow">Access</p>
+                <h2>Links And Alerts</h2>
+              </div>
+              <button class="ghost" id="access-settings-button" type="button">Edit Settings</button>
+            </div>
+
+            <nav class="utility-tabs" id="utility-tabs" aria-label="Access tools">
+              <button class="tab-chip active" data-utility-tab="alerts" type="button">Alerts</button>
+              <button class="tab-chip" data-utility-tab="pairing" type="button">QR Access</button>
+            </nav>
+
+            <section class="utility-view" data-utility-view="alerts">
+              <div class="info-stack">
+                <article class="info-card">
+                  <p class="eyebrow">Default Workspace</p>
+                  <strong id="summary-workspace">Not set</strong>
+                  <p class="hint">New chats start from this workspace unless you continue an existing thread.</p>
+                </article>
+                <article class="info-card">
+                  <p class="eyebrow">Public URL</p>
+                  <strong id="summary-public-url">Not configured</strong>
+                  <p class="hint">Used for Discord deep links and public QR links when your tunnel or domain is ready.</p>
+                </article>
+                <article class="info-card info-card-split">
+                  <div>
+                    <p class="eyebrow">Alerts</p>
+                    <strong id="summary-alert-status">Disabled</strong>
+                  </div>
+                  <div>
+                    <p class="eyebrow">Delivery</p>
+                    <strong id="summary-delivery-mode">Not configured</strong>
+                  </div>
+                </article>
+              </div>
+            </section>
+
+            <section class="utility-view hidden" data-utility-view="pairing">
+              <div class="empty-state hidden" id="pairing-remote-note">
+                <p>QR access is available only on the Codex host PC. Open this dashboard locally to copy tokens or regenerate them.</p>
+              </div>
+
+              <div class="pair-inline hidden" id="pairing-local-panel">
+                <div class="pair-inline-head">
+                  <p class="hint">
+                    This browser is on the Codex PC. Use the token below or share one of the generated links.
+                  </p>
+                  <a class="ghost" href="/pair">Open Full Pairing Page</a>
+                </div>
+
+                <div class="pair-token-row">
+                  <input id="pair-token-inline" type="text" readonly>
+                  <button class="ghost" id="copy-token-inline" type="button">Copy Token</button>
+                </div>
+
+                <div class="pair-actions inline-actions">
+                  <button class="primary" id="regenerate-token-inline" type="button">Regenerate Token</button>
+                </div>
+
+                <div class="pair-links inline-pair-links" id="pair-links-inline"></div>
+                <p class="hint pair-status" id="pair-status-inline"></p>
+              </div>
+            </section>
+          </aside>
         </div>
       </section>
     </main>

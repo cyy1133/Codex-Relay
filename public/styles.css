@@ -11,6 +11,7 @@
   --danger: #ff8073;
   --ok: #70d59c;
   --queued: #d9c06b;
+  --tab: rgba(255, 255, 255, 0.035);
   --radius-lg: 28px;
   --radius-md: 18px;
   --radius-sm: 12px;
@@ -26,6 +27,7 @@
 body {
   margin: 0;
   min-height: 100vh;
+  overflow-x: hidden;
   background:
     radial-gradient(circle at top left, rgba(245, 143, 76, 0.2), transparent 28%),
     radial-gradient(circle at bottom right, rgba(77, 167, 153, 0.18), transparent 30%),
@@ -64,6 +66,7 @@ a {
   position: relative;
   width: min(1400px, calc(100vw - 2rem));
   margin: 1rem auto;
+  min-width: 0;
 }
 
 .hidden {
@@ -117,11 +120,13 @@ a {
   display: flex;
   gap: 0.75rem;
   align-items: center;
+  min-width: 0;
 }
 
 .pair-token-row input,
 .pair-link-row input {
   flex: 1;
+  min-width: 0;
 }
 
 .pair-links {
@@ -223,6 +228,13 @@ a.primary {
   align-items: center;
   justify-content: center;
   text-decoration: none;
+  min-width: 0;
+}
+
+input,
+textarea,
+select {
+  width: 100%;
 }
 
 textarea {
@@ -261,17 +273,21 @@ a.primary:hover {
 .app {
   display: grid;
   gap: 1rem;
+  min-width: 0;
 }
 
 .topbar {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 0.75rem;
   padding: 0.5rem 0.25rem;
 }
 
 .topbar-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.7rem;
 }
 
@@ -309,20 +325,25 @@ a.primary:hover {
 
 .layout {
   display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
+  grid-template-columns: minmax(290px, 320px) minmax(0, 1fr) minmax(330px, 360px);
   gap: 1rem;
+  align-items: start;
+  min-width: 0;
 }
 
 .panel {
   padding: 1.2rem;
+  min-width: 0;
 }
 
 .panel-head {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  flex-wrap: wrap;
   gap: 1rem;
   margin-bottom: 1rem;
+  min-width: 0;
 }
 
 .panel-head.compact {
@@ -333,11 +354,37 @@ a.primary:hover {
   display: grid;
   justify-items: end;
   gap: 0.75rem;
+  min-width: 0;
 }
 
 .search {
   width: 100%;
   margin-bottom: 1rem;
+}
+
+.layout-tabs {
+  display: none;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.utility-tabs {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.tab-chip {
+  background: var(--tab);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+  padding: 0.72rem 0.95rem;
+}
+
+.tab-chip.active {
+  background: var(--accent-soft);
+  color: var(--ink);
+  border-color: rgba(245, 143, 76, 0.34);
 }
 
 .thread-list {
@@ -346,6 +393,7 @@ a.primary:hover {
   max-height: 65vh;
   overflow: auto;
   padding-right: 0.25rem;
+  min-width: 0;
 }
 
 .conversation-panel {
@@ -353,6 +401,7 @@ a.primary:hover {
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 1rem;
   min-height: 72vh;
+  min-width: 0;
 }
 
 .message-list {
@@ -361,6 +410,7 @@ a.primary:hover {
   min-height: 18rem;
   overflow: auto;
   padding-right: 0.25rem;
+  min-width: 0;
 }
 
 .thread-card {
@@ -369,6 +419,8 @@ a.primary:hover {
   background: rgba(255, 255, 255, 0.03);
   border-radius: var(--radius-md);
   border: 1px solid transparent;
+  padding: 1rem;
+  min-width: 0;
 }
 
 .thread-card.active {
@@ -380,17 +432,46 @@ a.primary:hover {
 .thread-card-bottom {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
   gap: 1rem;
+  min-width: 0;
+}
+
+.thread-card-top strong,
+.thread-card-bottom span:first-child,
+.meta span,
+.info-card strong,
+.status-card span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.thread-card-top strong {
+  flex: 1 1 14rem;
+  margin: 0;
+}
+
+.thread-card-top span:last-child,
+.thread-card-bottom span:last-child {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .thread-card p {
   margin: 0.75rem 0;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .meta {
   display: grid;
   gap: 0.35rem;
   text-align: right;
+  min-width: 0;
+  max-width: min(100%, 18rem);
 }
 
 .message {
@@ -428,6 +509,7 @@ a.primary:hover {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
+  overflow-wrap: anywhere;
   font: 0.95rem/1.65 var(--body);
 }
 
@@ -465,6 +547,83 @@ a.primary:hover {
   color: var(--muted);
 }
 
+.access-panel {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 1rem;
+  min-height: 72vh;
+}
+
+.utility-view {
+  min-width: 0;
+}
+
+.info-stack {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.info-card {
+  display: grid;
+  gap: 0.45rem;
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--bg-elevated);
+  min-width: 0;
+}
+
+.info-card strong {
+  font-size: 1rem;
+}
+
+.info-card p {
+  margin: 0;
+}
+
+.info-card-split {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.pair-inline {
+  display: grid;
+  gap: 1rem;
+}
+
+.pair-inline-head {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.pair-inline-head .hint {
+  margin: 0;
+}
+
+.inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.inline-pair-links {
+  grid-template-columns: 1fr;
+}
+
+.inline-pair-links .pair-link-card h2 {
+  font-size: 1rem;
+}
+
+.pair-link-row a,
+.pair-link-row button {
+  white-space: nowrap;
+}
+
+.pair-link-row input,
+.pair-token-row input {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .settings-dialog {
   border: none;
   padding: 0;
@@ -489,6 +648,10 @@ a.primary:hover {
 }
 
 @media (max-width: 980px) {
+  .layout-tabs {
+    display: flex;
+  }
+
   .layout {
     grid-template-columns: 1fr;
   }
@@ -498,11 +661,25 @@ a.primary:hover {
   }
 
   .thread-list {
-    max-height: 32vh;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    max-height: none;
+  }
+
+  .thread-list {
+    max-height: none;
   }
 
   .message-list {
     max-height: none;
+  }
+
+  .conversation-panel,
+  .access-panel {
+    min-height: auto;
+  }
+
+  .panel-mobile-hidden {
+    display: none !important;
   }
 }
 
@@ -525,6 +702,17 @@ a.primary:hover {
     align-items: stretch;
   }
 
+  .topbar-actions,
+  .layout-tabs,
+  .utility-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .topbar-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .pair-token-row,
   .pair-link-row {
     flex-direction: column;
@@ -533,5 +721,24 @@ a.primary:hover {
 
   .conversation-head-side {
     justify-items: stretch;
+  }
+
+  .thread-card,
+  .message,
+  .info-card {
+    padding: 0.9rem;
+  }
+
+  .thread-card-top,
+  .thread-card-bottom,
+  .info-card-split {
+    gap: 0.65rem;
+  }
+
+  .thread-card-top strong,
+  .thread-card-bottom span:first-child,
+  .meta,
+  .status-card span {
+    max-width: 100%;
   }
 }

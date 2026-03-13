@@ -9,7 +9,10 @@ const state = {
   selectedThread: null,
   requestedThreadId: urlState.searchParams.get("thread") || "",
   searchText: "",
-  eventSource: null
+  eventSource: null,
+  activeLayoutTab: "conversation",
+  activeUtilityTab: "alerts",
+  pairing: null
 };
 
 const loginCard = document.querySelector("#login-card");
@@ -29,9 +32,14 @@ const composerForm = document.querySelector("#composer-form");
 const composerTarget = document.querySelector("#composer-target");
 const composerHint = document.querySelector("#composer-hint");
 const statusStrip = document.querySelector("#status-strip");
+const layoutTabs = document.querySelector("#layout-tabs");
+const layoutPanels = Array.from(document.querySelectorAll("[data-panel]"));
 const threadSearch = document.querySelector("#thread-search");
 const refreshButton = document.querySelector("#refresh-button");
 const settingsButton = document.querySelector("#settings-button");
+const accessSettingsButton = document.querySelector("#access-settings-button");
+const utilityTabs = document.querySelector("#utility-tabs");
+const utilityViews = Array.from(document.querySelectorAll("[data-utility-view]"));
 const settingsDialog = document.querySelector("#settings-dialog");
 const settingsForm = document.querySelector("#settings-form");
 const publicBaseUrlInput = document.querySelector("#public-base-url");
@@ -42,6 +50,17 @@ const channelIdInput = document.querySelector("#channel-id-input");
 const notifyToggle = document.querySelector("#notify-toggle");
 const settingsHint = document.querySelector("#settings-hint");
 const closeSettingsButton = document.querySelector("#close-settings");
+const summaryWorkspace = document.querySelector("#summary-workspace");
+const summaryPublicUrl = document.querySelector("#summary-public-url");
+const summaryAlertStatus = document.querySelector("#summary-alert-status");
+const summaryDeliveryMode = document.querySelector("#summary-delivery-mode");
+const pairingRemoteNote = document.querySelector("#pairing-remote-note");
+const pairingLocalPanel = document.querySelector("#pairing-local-panel");
+const pairTokenInline = document.querySelector("#pair-token-inline");
+const copyTokenInlineButton = document.querySelector("#copy-token-inline");
+const regenerateTokenInlineButton = document.querySelector("#regenerate-token-inline");
+const pairLinksInline = document.querySelector("#pair-links-inline");
+const pairStatusInline = document.querySelector("#pair-status-inline");
 
 function apiFetch(route, options = {}) {
   return fetch(route, {
@@ -58,6 +77,39 @@ function apiFetch(route, options = {}) {
     }
     return payload;
   });
+}
+
+function plainFetch(route, options = {}) {
+  return fetch(route, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    }
+  }).then(async (response) => {
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.error || "Request failed");
+    }
+    return payload;
+  });
+}
+
+async function copyText(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const fallback = document.createElement("textarea");
+  fallback.value = text;
+  fallback.setAttribute("readonly", "");
+  fallback.style.position = "absolute";
+  fallback.style.left = "-9999px";
+  document.body.appendChild(fallback);
+  fallback.select();
+  document.execCommand("copy");
+  fallback.remove();
 }
 
 function setLoggedIn(isLoggedIn) {
@@ -101,6 +153,42 @@ function isLocalBrowser() {
   return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
 }
 
+function isCompactLayout() {
+  return window.matchMedia("(max-width: 980px)").matches;
+}
+
+function setLayoutTab(tab) {
+  state.activeLayoutTab = tab;
+
+  document.querySelectorAll("[data-layout-tab]").forEach((button) => {
+    const active = button.dataset.layoutTab === tab;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
+  });
+
+  layoutPanels.forEach((panel) => {
+    panel.classList.toggle("panel-mobile-hidden", isCompactLayout() && panel.dataset.panel !== tab);
+  });
+}
+
+function setUtilityTab(tab) {
+  state.activeUtilityTab = tab;
+
+  document.querySelectorAll("[data-utility-tab]").forEach((button) => {
+    const active = button.dataset.utilityTab === tab;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
+  });
+
+  utilityViews.forEach((view) => {
+    view.classList.toggle("hidden", view.dataset.utilityView !== tab);
+  });
+
+  if (tab === "pairing") {
+    void ensurePairingLoaded();
+  }
+}
+
 function updateUrl(threadId) {
   const nextUrl = new URL(window.location.href);
   nextUrl.searchParams.delete("token");
@@ -137,8 +225,111 @@ function applySettingsToDialog() {
   settingsHint.textContent = "";
 }
 
+function renderSettingsSummary() {
+  if (!state.settings) {
+    return;
+  }
+
+  summaryWorkspace.textContent = state.settings.defaultWorkspaceRoot || "Not set";
+  summaryPublicUrl.textContent = state.settings.publicBaseUrl || "Not configured";
+  summaryAlertStatus.textContent = state.settings.notificationEnabled ? "Enabled" : "Disabled";
+
+  if (state.settings.discordBotTokenConfigured && state.settings.discordChannelId) {
+    summaryDeliveryMode.textContent = "Discord bot";
+    return;
+  }
+
+  if (state.settings.discordWebhookConfigured) {
+    summaryDeliveryMode.textContent = "Webhook";
+    return;
+  }
+
+  summaryDeliveryMode.textContent = "Not configured";
+}
+
+function renderPairingLinks() {
+  if (!state.pairing) {
+    pairLinksInline.innerHTML = `
+      <div class="empty-state">
+        <p>Loading QR access links...</p>
+      </div>
+    `;
+    return;
+  }
+
+  if (!state.pairing?.links?.length) {
+    pairLinksInline.innerHTML = `
+      <div class="empty-state">
+        <p>No usable access URL is configured yet. Set a public URL or use the local network address.</p>
+      </div>
+    `;
+    return;
+  }
+
+  pairLinksInline.innerHTML = state.pairing.links
+    .map((link) => `
+      <article class="pair-link-card">
+        <div>
+          <p class="eyebrow">${escapeHtml(link.label)}</p>
+          <h2>${escapeHtml(link.label)}</h2>
+          <p class="hint">${escapeHtml(link.description || "")}</p>
+        </div>
+        <div class="qr-frame">
+          <img src="${escapeAttr(link.qrDataUrl)}" alt="${escapeAttr(`QR code for ${link.label}`)}">
+        </div>
+        <div class="pair-link-row">
+          <input type="text" readonly value="${escapeAttr(link.url)}">
+          <button class="ghost" type="button" data-copy-link="${escapeAttr(link.url)}">Copy Link</button>
+          <a class="ghost" href="${escapeAttr(link.url)}" target="_blank" rel="noreferrer">Open</a>
+        </div>
+      </article>
+    `)
+    .join("");
+}
+
+function renderPairingPanel() {
+  const local = isLocalBrowser();
+  pairingRemoteNote.classList.toggle("hidden", local);
+  pairingLocalPanel.classList.toggle("hidden", !local);
+
+  if (!local) {
+    pairStatusInline.textContent = "";
+    return;
+  }
+
+  pairTokenInline.value = state.pairing?.token || "";
+  renderPairingLinks();
+}
+
+async function ensurePairingLoaded({ force = false } = {}) {
+  renderPairingPanel();
+  if (!isLocalBrowser()) {
+    return;
+  }
+
+  if (state.pairing && !force) {
+    return;
+  }
+
+  pairStatusInline.textContent = force ? "Refreshing QR access..." : "Loading QR access...";
+
+  try {
+    const payload = await plainFetch("/api/pairing");
+    state.pairing = payload.pairing;
+    renderPairingPanel();
+    pairStatusInline.textContent = "";
+  } catch (error) {
+    pairStatusInline.textContent = error.message;
+  }
+}
+
 function getDefaultWorkspace() {
   return state.settings?.defaultWorkspaceRoot || "";
+}
+
+function openSettingsDialog() {
+  applySettingsToDialog();
+  settingsDialog.showModal();
 }
 
 function renderComposerState() {
@@ -158,6 +349,7 @@ function clearSelectedThread() {
   state.requestedThreadId = "";
   renderThreads();
   renderThreadDetail();
+  setLayoutTab("conversation");
   updateUrl("");
 }
 
@@ -270,6 +462,7 @@ async function loadThread(threadId, { updateAddressBar = true } = {}) {
   state.requestedThreadId = threadId;
   renderThreads();
   renderThreadDetail();
+  setLayoutTab("conversation");
   if (updateAddressBar) {
     updateUrl(threadId);
   }
@@ -284,8 +477,12 @@ async function bootstrap() {
   setLoggedIn(true);
   renderWorkspaceOptions();
   applySettingsToDialog();
+  renderSettingsSummary();
   renderThreads();
   renderJobs();
+  renderPairingPanel();
+  setLayoutTab(state.activeLayoutTab);
+  setUtilityTab(state.activeUtilityTab);
 
   const preferredThreadId = state.requestedThreadId || state.selectedThreadId;
 
@@ -342,6 +539,22 @@ loginForm.addEventListener("submit", async (event) => {
   }
 });
 
+layoutTabs.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-layout-tab]");
+  if (!button) {
+    return;
+  }
+  setLayoutTab(button.dataset.layoutTab);
+});
+
+utilityTabs.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-utility-tab]");
+  if (!button) {
+    return;
+  }
+  setUtilityTab(button.dataset.utilityTab);
+});
+
 threadList.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-thread-id]");
   if (!button) {
@@ -367,6 +580,7 @@ refreshButton.addEventListener("click", async () => {
   state.jobs = jobsPayload.jobs;
   renderThreads();
   renderJobs();
+  renderSettingsSummary();
   if (state.selectedThreadId) {
     await loadThread(state.selectedThreadId, { updateAddressBar: false }).catch(() => {});
   }
@@ -433,11 +647,54 @@ promptInput.addEventListener("keydown", (event) => {
 });
 
 settingsButton.addEventListener("click", () => {
-  applySettingsToDialog();
-  settingsDialog.showModal();
+  openSettingsDialog();
+});
+
+accessSettingsButton.addEventListener("click", () => {
+  openSettingsDialog();
 });
 
 closeSettingsButton.addEventListener("click", () => settingsDialog.close());
+
+copyTokenInlineButton.addEventListener("click", async () => {
+  try {
+    await copyText(pairTokenInline.value);
+    pairStatusInline.textContent = "Token copied.";
+  } catch (error) {
+    pairStatusInline.textContent = error.message;
+  }
+});
+
+pairLinksInline.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-copy-link]");
+  if (!button) {
+    return;
+  }
+  try {
+    await copyText(button.dataset.copyLink);
+    pairStatusInline.textContent = "Link copied.";
+  } catch (error) {
+    pairStatusInline.textContent = error.message;
+  }
+});
+
+regenerateTokenInlineButton.addEventListener("click", async () => {
+  if (!window.confirm("Regenerate the dashboard token? Existing shared links will stop working.")) {
+    return;
+  }
+
+  pairStatusInline.textContent = "Regenerating token...";
+  try {
+    const payload = await plainFetch("/api/pairing/regenerate", {
+      method: "POST"
+    });
+    state.pairing = payload.pairing;
+    renderPairingPanel();
+    pairStatusInline.textContent = "Token regenerated.";
+  } catch (error) {
+    pairStatusInline.textContent = error.message;
+  }
+});
 
 settingsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -462,9 +719,15 @@ settingsForm.addEventListener("submit", async (event) => {
 
   renderWorkspaceOptions();
   applySettingsToDialog();
+  renderSettingsSummary();
   renderThreadDetail();
   settingsHint.textContent = "Saved.";
   settingsDialog.close();
+  void ensurePairingLoaded({ force: true });
+});
+
+window.addEventListener("resize", () => {
+  setLayoutTab(state.activeLayoutTab);
 });
 
 if (state.token) {
