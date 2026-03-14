@@ -44,6 +44,10 @@ const utilityViews = Array.from(document.querySelectorAll("[data-utility-view]")
 const settingsDialog = document.querySelector("#settings-dialog");
 const settingsForm = document.querySelector("#settings-form");
 const publicBaseUrlInput = document.querySelector("#public-base-url");
+const tailscaleBaseUrlInput = document.querySelector("#tailscale-base-url");
+const executionBackendInput = document.querySelector("#execution-backend");
+const wslDistroNameInput = document.querySelector("#wsl-distro-name");
+const wslHomePathInput = document.querySelector("#wsl-home-path");
 const webhookInput = document.querySelector("#webhook-input");
 const botTokenInput = document.querySelector("#bot-token-input");
 const botTokenStatus = document.querySelector("#bot-token-status");
@@ -216,6 +220,10 @@ function applySettingsToDialog() {
   }
   settingsWorkspace.value = state.settings.defaultWorkspaceRoot || "";
   publicBaseUrlInput.value = state.settings.publicBaseUrl || "";
+  tailscaleBaseUrlInput.value = state.settings.tailscaleBaseUrl || state.pairing?.tailscaleBaseUrl || "";
+  executionBackendInput.value = state.settings.executionBackend || "windows";
+  wslDistroNameInput.value = state.settings.wslDistroName || "Ubuntu";
+  wslHomePathInput.value = state.settings.wslHomePath || "/home/jidon";
   webhookInput.value = state.settings.discordWebhookUrl || "";
   channelIdInput.value = state.settings.discordChannelId || "";
   botTokenInput.value = "";
@@ -232,7 +240,8 @@ function renderSettingsSummary() {
   }
 
   summaryWorkspace.textContent = state.settings.defaultWorkspaceRoot || "Not set";
-  summaryPublicUrl.textContent = state.settings.publicBaseUrl || "Not configured";
+  summaryPublicUrl.textContent =
+    `${state.settings.executionBackend === "wsl" ? "WSL" : "Windows"} | ${state.settings.tailscaleBaseUrl || state.settings.publicBaseUrl || "Not configured"}`;
   summaryAlertStatus.textContent = state.settings.notificationEnabled ? "Enabled" : "Disabled";
 
   if (state.settings.discordBotTokenConfigured && state.settings.discordChannelId) {
@@ -378,7 +387,10 @@ function renderThreads() {
       return `
         <button class="${activeClass}" data-thread-id="${escapeAttr(thread.id)}" type="button">
           <div class="thread-card-top">
-            <strong class="thread-title">${escapeHtml(thread.title || "Untitled thread")}</strong>
+            <div class="thread-card-ident">
+              <strong class="thread-title">${escapeHtml(thread.title || "Untitled thread")}</strong>
+              <span class="backend-badge">${escapeHtml((thread.backend || "windows").toUpperCase())}</span>
+            </div>
             <span class="thread-time">${escapeHtml(relativeTime(thread.updatedAt))}</span>
           </div>
           <p class="thread-preview">${escapeHtml(thread.firstUserMessage || "No prompt yet")}</p>
@@ -404,6 +416,7 @@ function renderThreadDetail() {
 
   threadTitle.textContent = thread.title || "Untitled thread";
   threadMeta.innerHTML = `
+    <span class="backend-badge">${escapeHtml((thread.backend || "windows").toUpperCase())}</span>
     <span>${escapeHtml(thread.cwd || "")}</span>
     <span>${escapeHtml(relativeTime(thread.updatedAt))}</span>
   `;
@@ -447,7 +460,7 @@ function renderJobs() {
         <div class="${statusClass}">
           <strong>${escapeHtml(job.status.toUpperCase())}</strong>
           <p>${escapeHtml(job.promptPreview || "")}</p>
-          <span>${escapeHtml(job.workspaceRoot || "")}</span>
+          <span>${escapeHtml(`${(job.executionBackend || "windows").toUpperCase()} | ${job.workspaceRoot || ""}`)}</span>
         </div>
       `;
     })
@@ -474,6 +487,7 @@ function upsertThreadSummary(thread) {
     updatedAt: thread.updatedAt,
     createdAt: thread.createdAt,
     cwd: thread.cwd,
+    backend: thread.backend || "windows",
     source: thread.source,
     cliVersion: thread.cliVersion,
     firstUserMessage: thread.firstUserMessage || "",
@@ -768,6 +782,10 @@ settingsForm.addEventListener("submit", async (event) => {
     body: JSON.stringify({
       defaultWorkspaceRoot: settingsWorkspace.value,
       publicBaseUrl: publicBaseUrlInput.value.trim(),
+      tailscaleBaseUrl: tailscaleBaseUrlInput.value.trim(),
+      executionBackend: executionBackendInput.value,
+      wslDistroName: wslDistroNameInput.value.trim(),
+      wslHomePath: wslHomePathInput.value.trim(),
       discordWebhookUrl: webhookInput.value.trim(),
       discordBotToken: botTokenInput.value.trim(),
       discordChannelId: channelIdInput.value.trim(),
