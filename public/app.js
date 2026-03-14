@@ -8,6 +8,7 @@ const state = {
   selectedThreadId: null,
   selectedThread: null,
   requestedThreadId: urlState.searchParams.get("thread") || "",
+  pendingNewJobId: "",
   searchText: "",
   eventSource: null,
   activeLayoutTab: "conversation",
@@ -462,11 +463,43 @@ function renderWorkspaceOptions() {
   settingsWorkspace.value = state.settings?.defaultWorkspaceRoot || "";
 }
 
+function upsertThreadSummary(thread) {
+  if (!thread?.id) {
+    return;
+  }
+
+  const summary = {
+    id: thread.id,
+    title: thread.title || thread.firstUserMessage || "Untitled thread",
+    updatedAt: thread.updatedAt,
+    createdAt: thread.createdAt,
+    cwd: thread.cwd,
+    source: thread.source,
+    cliVersion: thread.cliVersion,
+    firstUserMessage: thread.firstUserMessage || "",
+    lastAssistantMessage: thread.lastAssistantMessage || "",
+    messageCount: (thread.messages || []).length
+  };
+
+  const existingIndex = state.threads.findIndex((item) => item.id === thread.id);
+  if (existingIndex >= 0) {
+    state.threads.splice(existingIndex, 1, {
+      ...state.threads[existingIndex],
+      ...summary
+    });
+    return;
+  }
+
+  state.threads.unshift(summary);
+}
+
 async function loadThread(threadId, { updateAddressBar = true } = {}) {
   const payload = await apiFetch(`/api/threads/${encodeURIComponent(threadId)}`);
   state.selectedThreadId = threadId;
   state.selectedThread = payload.thread;
   state.requestedThreadId = threadId;
+  state.pendingNewJobId = "";
+  upsertThreadSummary(payload.thread);
   renderThreads();
   renderThreadDetail();
   setLayoutTab("conversation");
@@ -514,6 +547,23 @@ function connectEvents() {
   state.eventSource.addEventListener("jobs", (event) => {
     state.jobs = JSON.parse(event.data);
     renderJobs();
+
+    if (!state.pendingNewJobId) {
+      return;
+    }
+
+    const pendingJob = state.jobs.find((job) => job.id === state.pendingNewJobId);
+    if (!pendingJob?.threadId) {
+      return;
+    }
+
+    void apiFetch("/api/threads").then((payload) => {
+      state.threads = payload.threads;
+      renderThreads();
+      return loadThread(pendingJob.threadId);
+    }).then(() => {
+      composerHint.textContent = "New thread started.";
+    }).catch(() => {});
   });
 
   state.eventSource.addEventListener("threads", async (event) => {
@@ -526,6 +576,8 @@ function connectEvents() {
 
   state.eventSource.addEventListener("thread", (event) => {
     const payload = JSON.parse(event.data);
+    upsertThreadSummary(payload);
+    renderThreads();
     if (payload.id === state.selectedThreadId) {
       state.selectedThread = payload;
       renderThreadDetail();
@@ -606,8 +658,9 @@ composerForm.addEventListener("submit", async (event) => {
   const payload = {
     prompt
   };
+  const isNewThread = !state.selectedThreadId;
 
-  if (state.selectedThreadId) {
+  if (!isNewThread) {
     payload.resumeThreadId = state.selectedThreadId;
     payload.workspaceRoot = state.selectedThread?.cwd || getDefaultWorkspace();
   } else {
@@ -620,13 +673,14 @@ composerForm.addEventListener("submit", async (event) => {
   });
 
   promptInput.value = "";
-  if (!state.selectedThreadId) {
+  if (isNewThread) {
     state.requestedThreadId = "";
     state.selectedThread = null;
     state.selectedThreadId = null;
+    state.pendingNewJobId = response.job?.id || "";
   }
-  composerHint.textContent = state.selectedThreadId ? "Queued for the current thread." : "Queued as a new thread.";
-  if (!state.selectedThreadId && response.job?.id) {
+  composerHint.textContent = isNewThread ? "Queued as a new thread." : "Queued for the current thread.";
+  if (isNewThread && response.job?.id) {
     const syncNewThread = async () => {
       for (let attempt = 0; attempt < 18; attempt += 1) {
         const jobsPayload = await apiFetch("/api/jobs");
