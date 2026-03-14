@@ -162,6 +162,20 @@ http://localhost:3210/pair
 
 English: Use the local-only pairing page on the host PC to view the token, generate QR-ready links, copy URLs, or rotate the token.
 
+## Optional WSL Backend / 선택형 WSL 백엔드
+
+한국어:
+- 기본 동작은 그대로 `Windows`이며, `Settings`에서 `Execution Backend`를 `WSL`로 바꾸면 새 스레드를 WSL Codex로 실행할 수 있습니다.
+- Windows 호스트에서 WSL 세션도 함께 읽을 수 있도록 `WSL Distro Name`과 `WSL Home Path`를 함께 설정할 수 있습니다.
+- 새 스레드는 현재 선택한 backend를 따르지만, 기존 스레드에 이어서 보내는 메시지는 그 스레드를 처음 만든 backend를 유지합니다.
+- WSL backend를 쓰려면 WSL 안에서 `codex`가 직접 실행 가능해야 합니다. 예를 들어 로그인 셸에서 `codex`가 정상적으로 잡혀야 합니다.
+
+English:
+- The default behavior remains `Windows`. If you switch `Execution Backend` to `WSL` in `Settings`, new threads will run through WSL Codex instead.
+- You can also configure `WSL Distro Name` and `WSL Home Path` so a Windows-hosted Relay can discover WSL session files alongside Windows ones.
+- New threads follow the currently selected backend, while replies to existing threads stay on the backend that originally created the thread.
+- The WSL backend expects `codex` to be directly runnable inside WSL. In practice, a login shell should already resolve the correct WSL Codex binary.
+
 ## Running in the Background / 백그라운드 실행
 
 ### Manual launcher / 수동 실행
@@ -197,6 +211,10 @@ English: Runtime settings are stored in `data/settings.json` and are intentional
 | `defaultWorkspaceRoot` | 새 스레드를 시작할 기본 워크스페이스 경로 | Default workspace path used for new threads |
 | `workspaceRoots` | UI에서 선택 가능한 워크스페이스 목록 | List of workspace roots available to the UI |
 | `publicBaseUrl` | Discord 딥링크와 QR 링크를 만들 때 사용할 공개 주소 | Public base URL used for Discord deep links and QR/login links |
+| `tailscaleBaseUrl` | Tailscale용 QR 링크를 만들 때 사용할 전용 주소 | Dedicated URL used for Tailscale QR/login links |
+| `executionBackend` | 새 스레드 실행에 사용할 기본 backend (`windows` 또는 `wsl`) | Default backend for new threads (`windows` or `wsl`) |
+| `wslDistroName` | Windows 호스트에서 접근할 WSL 배포판 이름 | WSL distro name used by a Windows-hosted Relay |
+| `wslHomePath` | WSL 세션 파일을 찾을 홈 경로 | Home path used to discover WSL session files |
 | `notificationEnabled` | 작업 완료/실패 Discord 알림 사용 여부 | Enables Discord completion/failure notifications |
 | `discordWebhookUrl` | 웹훅 기반 알림 주소 | Webhook URL for Discord delivery |
 | `discordBotToken` | 봇 API 방식 전송용 Bot 토큰 | Bot token used for Discord API delivery |
