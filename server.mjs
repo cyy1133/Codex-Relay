@@ -9,13 +9,18 @@ import { fileURLToPath } from "node:url";
 import QRCode from "qrcode";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CODEX_HOME = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
+const WSL_HOME = os.homedir();
+const WINDOWS_HOME = path.join("/mnt/c/Users", path.basename(WSL_HOME));
+const CODEX_HOMES = Array.from(new Set([
+  process.env.CODEX_HOME || path.join(WSL_HOME, ".codex"),
+  path.join(WINDOWS_HOME, ".codex")
+]));
 const STATIC_DIR = path.join(__dirname, "public");
 const DATA_DIR = path.join(__dirname, "data");
 const SETTINGS_PATH = path.join(DATA_DIR, "settings.json");
-const SESSIONS_DIR = path.join(CODEX_HOME, "sessions");
-const SESSION_INDEX_PATH = path.join(CODEX_HOME, "session_index.jsonl");
-const GLOBAL_STATE_PATH = path.join(CODEX_HOME, ".codex-global-state.json");
+const SESSIONS_DIRS = CODEX_HOMES.map((home) => path.join(home, "sessions"));
+const SESSION_INDEX_PATHS = CODEX_HOMES.map((home) => path.join(home, "session_index.jsonl"));
+const GLOBAL_STATE_PATHS = CODEX_HOMES.map((home) => path.join(home, ".codex-global-state.json"));
 const PORT = Number(process.env.PORT || 3210);
 const HOST = process.env.HOST || "0.0.0.0";
 const MAX_THREADS = 50;
@@ -262,13 +267,17 @@ function sanitizeWorkspaceRoots(rawRoots) {
 }
 
 async function loadWorkspaceRoots() {
-  const raw = await readTextFile(GLOBAL_STATE_PATH);
-  const parsed = safeJsonParse(raw, {});
-  return sanitizeWorkspaceRoots([
-    ...(parsed["active-workspace-roots"] || []),
-    ...(parsed["electron-saved-workspace-roots"] || []),
-    DEFAULT_WORKSPACE
-  ]);
+  const roots = [];
+  for (const globalStatePath of GLOBAL_STATE_PATHS) {
+    const raw = await readTextFile(globalStatePath);
+    const parsed = safeJsonParse(raw, {});
+    roots.push(
+      ...(parsed["active-workspace-roots"] || []),
+      ...(parsed["electron-saved-workspace-roots"] || [])
+    );
+  }
+  roots.push(DEFAULT_WORKSPACE);
+  return sanitizeWorkspaceRoots(roots);
 }
 
 async function loadSettings() {
@@ -323,7 +332,12 @@ async function walkDir(rootDir) {
 }
 
 async function refreshSessionFileMap() {
-  const files = await walkDir(SESSIONS_DIR);
+  const files = [];
+  for (const sessionsDir of SESSIONS_DIRS) {
+    if (await fileExists(sessionsDir)) {
+      files.push(...await walkDir(sessionsDir));
+    }
+  }
   const nextMap = new Map();
   for (const filePath of files) {
     const match = filePath.match(/([0-9a-f-]{36})\.jsonl$/i);
@@ -476,14 +490,20 @@ async function parseThreadFile(filePath) {
 }
 
 async function loadThreadSummaries(limit = MAX_THREADS) {
-  const raw = await readTextFile(SESSION_INDEX_PATH);
-  const entries = raw
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map((line) => safeJsonParse(line, null))
-    .filter(Boolean)
-    .slice(-limit)
-    .reverse();
+  const indexEntries = [];
+  for (const sessionIndexPath of SESSION_INDEX_PATHS) {
+    const raw = await readTextFile(sessionIndexPath);
+    const parsedEntries = raw
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => safeJsonParse(line, null))
+      .filter(Boolean);
+    indexEntries.push(...parsedEntries);
+  }
+
+  const entries = indexEntries
+    .sort((left, right) => new Date(right.updated_at || 0) - new Date(left.updated_at || 0))
+    .slice(0, limit);
 
   const indexedIds = new Set(entries.map((entry) => entry.id));
   const summaries = [];
