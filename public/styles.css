@@ -164,6 +164,28 @@ a {
   margin: 0;
 }
 
+.thread-card-ident {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.backend-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  font: 600 0.68rem/1 var(--headline);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: rgba(255, 255, 255, 0.04);
+  white-space: nowrap;
+}
+
 .eyebrow {
   margin: 0 0 0.6rem;
   font: 600 0.74rem/1 var(--headline);

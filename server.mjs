@@ -9,18 +9,15 @@ import { fileURLToPath } from "node:url";
 import QRCode from "qrcode";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const WSL_HOME = os.homedir();
-const WINDOWS_HOME = path.join("/mnt/c/Users", path.basename(WSL_HOME));
-const CODEX_HOMES = Array.from(new Set([
-  process.env.CODEX_HOME || path.join(WSL_HOME, ".codex"),
-  path.join(WINDOWS_HOME, ".codex")
-]));
+const IS_WINDOWS_HOST = process.platform === "win32";
+const LOCAL_HOME = os.homedir();
+const LOCAL_USERNAME = path.basename(LOCAL_HOME);
+const WINDOWS_HOME = IS_WINDOWS_HOST ? LOCAL_HOME : path.join("/mnt/c/Users", LOCAL_USERNAME);
+const DEFAULT_WSL_DISTRO_NAME = process.env.CODEX_RELAY_WSL_DISTRO || "Ubuntu";
+const DEFAULT_WSL_HOME_PATH = process.env.CODEX_RELAY_WSL_HOME || `/home/${LOCAL_USERNAME}`;
 const STATIC_DIR = path.join(__dirname, "public");
 const DATA_DIR = path.join(__dirname, "data");
 const SETTINGS_PATH = path.join(DATA_DIR, "settings.json");
-const SESSIONS_DIRS = CODEX_HOMES.map((home) => path.join(home, "sessions"));
-const SESSION_INDEX_PATHS = CODEX_HOMES.map((home) => path.join(home, "session_index.jsonl"));
-const GLOBAL_STATE_PATHS = CODEX_HOMES.map((home) => path.join(home, ".codex-global-state.json"));
 const PORT = Number(process.env.PORT || 3210);
 const HOST = process.env.HOST || "0.0.0.0";
 const MAX_THREADS = 50;
@@ -81,6 +78,58 @@ function normalizeBaseUrl(value) {
     return "";
   }
   return trimmed.replace(/\/+$/, "");
+}
+
+function normalizeExecutionBackend(value) {
+  return String(value || "").trim().toLowerCase() === "wsl" ? "wsl" : "windows";
+}
+
+function normalizeWslHomePath(value) {
+  const trimmed = String(value || "").trim().replace(/\\/g, "/");
+  if (!trimmed) {
+    return DEFAULT_WSL_HOME_PATH;
+  }
+  const normalized = trimmed.startsWith("/") ? trimmed : `/${trimmed.replace(/^\/+/, "")}`;
+  return normalized.replace(/\/+$/, "");
+}
+
+function getWslConfig() {
+  return {
+    distroName: String(settings?.wslDistroName || DEFAULT_WSL_DISTRO_NAME).trim() || DEFAULT_WSL_DISTRO_NAME,
+    homePath: normalizeWslHomePath(settings?.wslHomePath || DEFAULT_WSL_HOME_PATH)
+  };
+}
+
+function toWslUncPath(distroName, linuxPath) {
+  const normalized = normalizeWslHomePath(linuxPath).replace(/\//g, "\\");
+  return `\\\\wsl.localhost\\${distroName}${normalized}`;
+}
+
+function getCodexHomes() {
+  const homes = new Set();
+
+  if (IS_WINDOWS_HOST) {
+    homes.add(path.join(LOCAL_HOME, ".codex"));
+    const wslConfig = getWslConfig();
+    homes.add(path.join(toWslUncPath(wslConfig.distroName, wslConfig.homePath), ".codex"));
+  } else {
+    homes.add(process.env.CODEX_HOME || path.join(LOCAL_HOME, ".codex"));
+    homes.add(path.join(WINDOWS_HOME, ".codex"));
+  }
+
+  return Array.from(homes);
+}
+
+function getSessionDirs() {
+  return getCodexHomes().map((home) => path.join(home, "sessions"));
+}
+
+function getSessionIndexPaths() {
+  return getCodexHomes().map((home) => path.join(home, "session_index.jsonl"));
+}
+
+function getGlobalStatePaths() {
+  return getCodexHomes().map((home) => path.join(home, ".codex-global-state.json"));
 }
 
 function buildUrl(baseUrl, params = {}) {
@@ -299,7 +348,7 @@ function sanitizeWorkspaceRoots(rawRoots) {
 
 async function loadWorkspaceRoots() {
   const roots = [];
-  for (const globalStatePath of GLOBAL_STATE_PATHS) {
+  for (const globalStatePath of getGlobalStatePaths()) {
     const raw = await readTextFile(globalStatePath);
     const parsed = safeJsonParse(raw, {});
     roots.push(
@@ -327,6 +376,9 @@ async function loadSettings() {
     discordChannelId: typeof existing.discordChannelId === "string" ? existing.discordChannelId : "",
     publicBaseUrl: normalizeBaseUrl(existing.publicBaseUrl || ""),
     tailscaleBaseUrl: normalizeBaseUrl(existing.tailscaleBaseUrl || ""),
+    executionBackend: normalizeExecutionBackend(existing.executionBackend || "windows"),
+    wslDistroName: typeof existing.wslDistroName === "string" ? existing.wslDistroName.trim() : DEFAULT_WSL_DISTRO_NAME,
+    wslHomePath: normalizeWslHomePath(existing.wslHomePath || DEFAULT_WSL_HOME_PATH),
     notificationEnabled: Boolean(existing.notificationEnabled)
   };
   settings.defaultWorkspaceRoot =
@@ -365,7 +417,7 @@ async function walkDir(rootDir) {
 
 async function refreshSessionFileMap() {
   const files = [];
-  for (const sessionsDir of SESSIONS_DIRS) {
+  for (const sessionsDir of getSessionDirs()) {
     if (await fileExists(sessionsDir)) {
       files.push(...await walkDir(sessionsDir));
     }
@@ -413,12 +465,21 @@ function buildThreadSummary(thread, messageCount) {
     updatedAt: thread.updatedAt,
     createdAt: thread.createdAt,
     cwd: thread.cwd,
+    backend: thread.backend || "windows",
     source: thread.source,
     cliVersion: thread.cliVersion,
     firstUserMessage: trimText(thread.firstUserMessage, 200),
     lastAssistantMessage: trimText(thread.lastAssistantMessage, 240),
     messageCount
   };
+}
+
+function detectThreadBackend(filePath) {
+  const normalized = String(filePath || "").toLowerCase();
+  if (IS_WINDOWS_HOST) {
+    return normalized.startsWith("\\\\wsl.localhost\\") ? "wsl" : "windows";
+  }
+  return normalized.startsWith("/mnt/c/users/") ? "windows" : "wsl";
 }
 
 async function parseThreadFile(filePath) {
@@ -490,6 +551,7 @@ async function parseThreadFile(filePath) {
     id: meta?.id || path.basename(filePath, ".jsonl"),
     title,
     cwd: meta?.cwd || "",
+    backend: detectThreadBackend(filePath),
     source: meta?.source || "",
     cliVersion: meta?.cliVersion || "",
     createdAt: meta?.createdAt || null,
@@ -503,6 +565,7 @@ async function parseThreadFile(filePath) {
         id: meta?.id || path.basename(filePath, ".jsonl"),
         title,
         cwd: meta?.cwd || "",
+        backend: detectThreadBackend(filePath),
         source: meta?.source || "",
         cliVersion: meta?.cliVersion || "",
         createdAt: meta?.createdAt || null,
@@ -523,7 +586,7 @@ async function parseThreadFile(filePath) {
 
 async function loadThreadSummaries(limit = MAX_THREADS) {
   const indexEntries = [];
-  for (const sessionIndexPath of SESSION_INDEX_PATHS) {
+  for (const sessionIndexPath of getSessionIndexPaths()) {
     const raw = await readTextFile(sessionIndexPath);
     const parsedEntries = raw
       .split(/\r?\n/)
@@ -548,6 +611,7 @@ async function loadThreadSummaries(limit = MAX_THREADS) {
         updatedAt: entry.updated_at || null,
         createdAt: null,
         cwd: "",
+        backend: "windows",
         source: "",
         cliVersion: "",
         firstUserMessage: "",
@@ -598,6 +662,9 @@ function getPublicSettings() {
     notificationEnabled: settings.notificationEnabled,
     publicBaseUrl: settings.publicBaseUrl,
     tailscaleBaseUrl: settings.tailscaleBaseUrl,
+    executionBackend: settings.executionBackend,
+    wslDistroName: settings.wslDistroName,
+    wslHomePath: settings.wslHomePath,
     discordChannelId: settings.discordChannelId,
     discordWebhookConfigured: Boolean(settings.discordWebhookUrl),
     discordWebhookUrl: settings.discordWebhookUrl,
@@ -683,6 +750,7 @@ function getJobsSnapshot() {
       id: job.id,
       status: job.status,
       workspaceRoot: job.workspaceRoot,
+      executionBackend: job.executionBackend || "windows",
       promptPreview: trimText(job.prompt, 160),
       createdAt: job.createdAt,
       startedAt: job.startedAt,
@@ -709,6 +777,10 @@ function quoteCmdArg(arg) {
   return `"${String(arg).replace(/"/g, '""')}"`;
 }
 
+function quoteBashArg(arg) {
+  return `'${String(arg).replace(/'/g, `'\"'\"'`)}'`;
+}
+
 function buildExecutionArgs() {
   if (EXECUTION_MODE === "sandboxed") {
     return ["-a", EXEC_APPROVAL, "-s", EXEC_SANDBOX];
@@ -716,9 +788,9 @@ function buildExecutionArgs() {
   return ["--dangerously-bypass-approvals-and-sandbox"];
 }
 
-function buildCodexCommand(job) {
+function buildCodexArgs(job, nullDevice) {
   const executionArgs = buildExecutionArgs();
-  const args = job.resumeThreadId
+  return job.resumeThreadId
     ? [
         ...executionArgs,
         "exec",
@@ -726,7 +798,7 @@ function buildCodexCommand(job) {
         "--json",
         "--skip-git-repo-check",
         "-o",
-        "NUL",
+        nullDevice,
         job.resumeThreadId,
         "-"
       ]
@@ -736,10 +808,72 @@ function buildCodexCommand(job) {
         "--json",
         "--skip-git-repo-check",
         "-o",
-        "NUL",
+        nullDevice,
         "-"
       ];
-  return ["codex.cmd", ...args].map(quoteCmdArg).join(" ");
+}
+
+function buildCodexExecution(job) {
+  if (job.executionBackend === "wsl") {
+    const wslConfig = getWslConfig();
+    const bashCommand = ["codex", ...buildCodexArgs(job, "/dev/null")]
+      .map(quoteBashArg)
+      .join(" ");
+    return {
+      command: "wsl.exe",
+      args: ["-d", wslConfig.distroName, "--cd", job.workspaceRoot, "bash", "-lic", bashCommand],
+      cwd: IS_WINDOWS_HOST ? LOCAL_HOME : DEFAULT_WORKSPACE
+    };
+  }
+
+  const command = ["codex.cmd", ...buildCodexArgs(job, "NUL")]
+    .map(quoteCmdArg)
+    .join(" ");
+  return {
+    command: CMD_EXE,
+    args: ["/d", "/s", "/c", command],
+    cwd: job.workspaceRoot
+  };
+}
+
+function toWslWorkspaceRoot(workspaceRoot) {
+  const normalized = String(workspaceRoot || "").trim();
+  if (!normalized) {
+    return "";
+  }
+  if (normalized.startsWith("/")) {
+    return normalized;
+  }
+  const driveMatch = normalized.match(/^([A-Za-z]):[\\/](.*)$/);
+  if (driveMatch) {
+    return `/mnt/${driveMatch[1].toLowerCase()}/${driveMatch[2].replace(/\\/g, "/")}`;
+  }
+  const uncMatch = normalized.match(/^\\\\wsl(?:\.localhost)?\\[^\\]+\\(.+)$/i);
+  if (uncMatch) {
+    return `/${uncMatch[1].replace(/\\/g, "/")}`;
+  }
+  return normalized.replace(/\\/g, "/");
+}
+
+function toWindowsWorkspaceRoot(workspaceRoot) {
+  const normalized = String(workspaceRoot || "").trim();
+  if (!normalized) {
+    return "";
+  }
+  if (/^[A-Za-z]:[\\/]/.test(normalized) || normalized.startsWith("\\\\")) {
+    return normalized;
+  }
+  const mountMatch = normalized.match(/^\/mnt\/([A-Za-z])\/(.+)$/);
+  if (mountMatch) {
+    return `${mountMatch[1].toUpperCase()}:\\${mountMatch[2].replace(/\//g, "\\")}`;
+  }
+  throw new Error("The selected workspace cannot be used with the Windows backend.");
+}
+
+function convertWorkspaceRootForBackend(workspaceRoot, executionBackend) {
+  return normalizeExecutionBackend(executionBackend) === "wsl"
+    ? toWslWorkspaceRoot(workspaceRoot)
+    : toWindowsWorkspaceRoot(workspaceRoot);
 }
 
 function normalizeWorkspaceRoot(workspaceRoot, { allowUnlisted = false } = {}) {
@@ -757,19 +891,28 @@ function normalizeWorkspaceRoot(workspaceRoot, { allowUnlisted = false } = {}) {
   return settings.defaultWorkspaceRoot;
 }
 
-async function resolveWorkspaceRootForJob({ workspaceRoot, resumeThreadId = null }) {
+async function resolveJobSpec({ workspaceRoot, resumeThreadId = null }) {
   if (resumeThreadId) {
     const thread = await loadThreadDetail(resumeThreadId);
     if (!thread) {
       throw new Error("Thread not found");
     }
-    if (thread.cwd) {
-      return normalizeWorkspaceRoot(thread.cwd, {
+    const executionBackend = normalizeExecutionBackend(thread.backend || settings.executionBackend);
+    const resolvedWorkspaceRoot = thread.cwd
+      ? normalizeWorkspaceRoot(thread.cwd, {
         allowUnlisted: true
-      });
-    }
+      })
+      : normalizeWorkspaceRoot(workspaceRoot);
+    return {
+      workspaceRoot: convertWorkspaceRootForBackend(resolvedWorkspaceRoot, executionBackend),
+      executionBackend
+    };
   }
-  return normalizeWorkspaceRoot(workspaceRoot);
+  const executionBackend = normalizeExecutionBackend(settings.executionBackend);
+  return {
+    workspaceRoot: convertWorkspaceRootForBackend(normalizeWorkspaceRoot(workspaceRoot), executionBackend),
+    executionBackend
+  };
 }
 
 function updateJob(jobId, patch) {
@@ -869,9 +1012,9 @@ async function runJob(job) {
     error: ""
   });
 
-  const command = buildCodexCommand(job);
-  const child = spawn(CMD_EXE, ["/d", "/s", "/c", command], {
-    cwd: job.workspaceRoot,
+  const execution = buildCodexExecution(job);
+  const child = spawn(execution.command, execution.args, {
+    cwd: execution.cwd,
     env: {
       ...process.env,
       RUST_LOG: "error"
@@ -959,6 +1102,7 @@ function queueJob({ prompt, workspaceRoot, resumeThreadId = null }) {
     id: createId("job"),
     prompt,
     workspaceRoot,
+    executionBackend: normalizeExecutionBackend(settings.executionBackend),
     resumeThreadId,
     status: "queued",
     createdAt: nowIso(),
@@ -984,7 +1128,10 @@ function validateSettingsUpdate(payload) {
     discordBotToken: settings.discordBotToken,
     discordChannelId: settings.discordChannelId,
     publicBaseUrl: settings.publicBaseUrl,
-    tailscaleBaseUrl: settings.tailscaleBaseUrl
+    tailscaleBaseUrl: settings.tailscaleBaseUrl,
+    executionBackend: settings.executionBackend,
+    wslDistroName: settings.wslDistroName,
+    wslHomePath: settings.wslHomePath
   };
 
   if (payload.defaultWorkspaceRoot && settings.workspaceRoots.includes(payload.defaultWorkspaceRoot)) {
@@ -1007,6 +1154,15 @@ function validateSettingsUpdate(payload) {
   }
   if (typeof payload.tailscaleBaseUrl === "string") {
     next.tailscaleBaseUrl = normalizeBaseUrl(payload.tailscaleBaseUrl);
+  }
+  if (typeof payload.executionBackend === "string") {
+    next.executionBackend = normalizeExecutionBackend(payload.executionBackend);
+  }
+  if (typeof payload.wslDistroName === "string") {
+    next.wslDistroName = payload.wslDistroName.trim() || DEFAULT_WSL_DISTRO_NAME;
+  }
+  if (typeof payload.wslHomePath === "string") {
+    next.wslHomePath = normalizeWslHomePath(payload.wslHomePath);
   }
   return next;
 }
@@ -1141,15 +1297,16 @@ async function handleApi(req, res, url) {
       });
     }
     const resumeThreadId = body.resumeThreadId ? String(body.resumeThreadId).trim() : null;
-    const workspaceRoot = await resolveWorkspaceRootForJob({
+    const jobSpec = await resolveJobSpec({
       workspaceRoot: String(body.workspaceRoot || settings.defaultWorkspaceRoot),
       resumeThreadId
     });
     const job = queueJob({
       prompt,
-      workspaceRoot,
+      workspaceRoot: jobSpec.workspaceRoot,
       resumeThreadId
     });
+    job.executionBackend = jobSpec.executionBackend;
     return sendJson(res, 202, {
       job
     });

@@ -185,6 +185,21 @@
           <input id="tailscale-base-url" type="url" placeholder="http://100.x.x.x:3210">
         </label>
         <label class="field">
+          <span>Execution Backend</span>
+          <select id="execution-backend">
+            <option value="windows">Windows</option>
+            <option value="wsl">WSL</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>WSL Distro Name</span>
+          <input id="wsl-distro-name" type="text" placeholder="Ubuntu">
+        </label>
+        <label class="field">
+          <span>WSL Home Path</span>
+          <input id="wsl-home-path" type="text" placeholder="/home/your-user">
+        </label>
+        <label class="field">
           <span>Discord Bot Token</span>
           <input id="bot-token-input" type="password" autocomplete="new-password" placeholder="Leave blank to keep current token">
         </label>
