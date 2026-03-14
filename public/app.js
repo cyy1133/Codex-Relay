@@ -44,6 +44,7 @@ const utilityViews = Array.from(document.querySelectorAll("[data-utility-view]")
 const settingsDialog = document.querySelector("#settings-dialog");
 const settingsForm = document.querySelector("#settings-form");
 const publicBaseUrlInput = document.querySelector("#public-base-url");
+const tailscaleBaseUrlInput = document.querySelector("#tailscale-base-url");
 const webhookInput = document.querySelector("#webhook-input");
 const botTokenInput = document.querySelector("#bot-token-input");
 const botTokenStatus = document.querySelector("#bot-token-status");
@@ -216,6 +217,7 @@ function applySettingsToDialog() {
   }
   settingsWorkspace.value = state.settings.defaultWorkspaceRoot || "";
   publicBaseUrlInput.value = state.settings.publicBaseUrl || "";
+  tailscaleBaseUrlInput.value = state.settings.tailscaleBaseUrl || state.pairing?.tailscaleBaseUrl || "";
   webhookInput.value = state.settings.discordWebhookUrl || "";
   channelIdInput.value = state.settings.discordChannelId || "";
   botTokenInput.value = "";
@@ -232,7 +234,8 @@ function renderSettingsSummary() {
   }
 
   summaryWorkspace.textContent = state.settings.defaultWorkspaceRoot || "Not set";
-  summaryPublicUrl.textContent = state.settings.publicBaseUrl || "Not configured";
+  summaryPublicUrl.textContent =
+    state.settings.tailscaleBaseUrl || state.settings.publicBaseUrl || "Not configured";
   summaryAlertStatus.textContent = state.settings.notificationEnabled ? "Enabled" : "Disabled";
 
   if (state.settings.discordBotTokenConfigured && state.settings.discordChannelId) {
@@ -768,6 +771,7 @@ settingsForm.addEventListener("submit", async (event) => {
     body: JSON.stringify({
       defaultWorkspaceRoot: settingsWorkspace.value,
       publicBaseUrl: publicBaseUrlInput.value.trim(),
+      tailscaleBaseUrl: tailscaleBaseUrlInput.value.trim(),
       discordWebhookUrl: webhookInput.value.trim(),
       discordBotToken: botTokenInput.value.trim(),
       discordChannelId: channelIdInput.value.trim(),

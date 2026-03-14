@@ -207,6 +207,18 @@ function isPrivateIpv4(value) {
   return octet >= 16 && octet <= 31;
 }
 
+function isTailscaleIpv4(value) {
+  if (!value || typeof value !== "string") {
+    return false;
+  }
+  const match = value.match(/^100\.(\d+)\./);
+  if (!match) {
+    return false;
+  }
+  const octet = Number(match[1]);
+  return octet >= 64 && octet <= 127;
+}
+
 function getLanBaseUrls() {
   const interfaces = os.networkInterfaces();
   const privateUrls = [];
@@ -227,6 +239,25 @@ function getLanBaseUrls() {
   }
 
   return Array.from(new Set([...privateUrls, ...otherUrls]));
+}
+
+function getTailscaleBaseUrls() {
+  const interfaces = os.networkInterfaces();
+  const urls = [];
+
+  for (const entries of Object.values(interfaces)) {
+    for (const entry of entries || []) {
+      if (!entry || entry.family !== "IPv4" || entry.internal || !entry.address) {
+        continue;
+      }
+      if (!isTailscaleIpv4(entry.address)) {
+        continue;
+      }
+      urls.push(`http://${entry.address}:${PORT}`);
+    }
+  }
+
+  return Array.from(new Set(urls));
 }
 
 function disconnectEventClients() {
@@ -295,6 +326,7 @@ async function loadSettings() {
     discordBotToken: typeof existing.discordBotToken === "string" ? existing.discordBotToken : "",
     discordChannelId: typeof existing.discordChannelId === "string" ? existing.discordChannelId : "",
     publicBaseUrl: normalizeBaseUrl(existing.publicBaseUrl || ""),
+    tailscaleBaseUrl: normalizeBaseUrl(existing.tailscaleBaseUrl || ""),
     notificationEnabled: Boolean(existing.notificationEnabled)
   };
   settings.defaultWorkspaceRoot =
@@ -565,6 +597,7 @@ function getPublicSettings() {
     defaultWorkspaceRoot: settings.defaultWorkspaceRoot,
     notificationEnabled: settings.notificationEnabled,
     publicBaseUrl: settings.publicBaseUrl,
+    tailscaleBaseUrl: settings.tailscaleBaseUrl,
     discordChannelId: settings.discordChannelId,
     discordWebhookConfigured: Boolean(settings.discordWebhookUrl),
     discordWebhookUrl: settings.discordWebhookUrl,
@@ -575,8 +608,22 @@ function getPublicSettings() {
 async function buildPairingPayload() {
   const localhostUrl = `http://localhost:${PORT}`;
   const lanBaseUrls = getLanBaseUrls();
+  const tailscaleBaseUrls = getTailscaleBaseUrls();
   const publicBaseUrl = normalizeBaseUrl(settings.publicBaseUrl);
+  const tailscaleBaseUrl = normalizeBaseUrl(settings.tailscaleBaseUrl) || tailscaleBaseUrls[0] || "";
+  const hasDetectedTailscale = tailscaleBaseUrls.length > 0;
+  const hasConfiguredTailscale = Boolean(normalizeBaseUrl(settings.tailscaleBaseUrl));
   const rawLinks = [
+    {
+      id: "tailscale",
+      label: "Tailscale",
+      description: hasDetectedTailscale
+        ? "Recommended for personal remote access. Scan this from a phone already connected to the same tailnet."
+        : hasConfiguredTailscale
+          ? "Configured Tailscale URL. This works only while the Codex PC is connected to Tailscale."
+          : "Recommended for personal remote access when the Codex PC is connected to Tailscale.",
+      baseUrl: tailscaleBaseUrl
+    },
     {
       id: "lan",
       label: "Same Wi-Fi",
@@ -620,8 +667,10 @@ async function buildPairingPayload() {
   return {
     token: settings.authToken,
     publicBaseUrl,
+    tailscaleBaseUrl,
     localhostUrl,
     lanBaseUrls,
+    tailscaleBaseUrls,
     links
   };
 }
@@ -934,7 +983,8 @@ function validateSettingsUpdate(payload) {
     discordWebhookUrl: settings.discordWebhookUrl,
     discordBotToken: settings.discordBotToken,
     discordChannelId: settings.discordChannelId,
-    publicBaseUrl: settings.publicBaseUrl
+    publicBaseUrl: settings.publicBaseUrl,
+    tailscaleBaseUrl: settings.tailscaleBaseUrl
   };
 
   if (payload.defaultWorkspaceRoot && settings.workspaceRoots.includes(payload.defaultWorkspaceRoot)) {
@@ -954,6 +1004,9 @@ function validateSettingsUpdate(payload) {
   }
   if (typeof payload.publicBaseUrl === "string") {
     next.publicBaseUrl = normalizeBaseUrl(payload.publicBaseUrl);
+  }
+  if (typeof payload.tailscaleBaseUrl === "string") {
+    next.tailscaleBaseUrl = normalizeBaseUrl(payload.tailscaleBaseUrl);
   }
   return next;
 }
