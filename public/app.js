@@ -604,12 +604,14 @@ composerForm.addEventListener("submit", async (event) => {
   }
 
   const payload = {
-    prompt,
-    workspaceRoot: getDefaultWorkspace()
+    prompt
   };
 
   if (state.selectedThreadId) {
     payload.resumeThreadId = state.selectedThreadId;
+    payload.workspaceRoot = state.selectedThread?.cwd || getDefaultWorkspace();
+  } else {
+    payload.workspaceRoot = getDefaultWorkspace();
   }
 
   const response = await apiFetch("/api/threads", {

@@ -233,12 +233,14 @@ English:
 
 한국어:
 - 이 서버는 로컬 Codex 작업을 실제로 실행하므로 대시보드 토큰은 민감 정보로 취급해야 합니다.
+- 기본 실행은 실제 파일 수정이 가능한 완전 자동 모드이며, 더 보수적으로 쓰려면 `CODEX_RELAY_EXECUTION_MODE=sandboxed` 와 `CODEX_RELAY_SANDBOX`, `CODEX_RELAY_APPROVAL` 환경변수로 다시 제한할 수 있습니다.
 - `/pair`는 로컬 PC 전용으로 제한되어 있습니다.
 - QR 코드와 토큰 포함 링크는 공유 후 즉시 폐기할 수 있도록 토큰 재발급 기능을 제공합니다.
 - 인터넷에 직접 열기보다는 LAN, VPN, Tailscale, Cloudflare Tunnel, 인증이 걸린 리버스 프록시를 우선 권장합니다.
 
 English:
 - This server can execute real local Codex jobs, so treat the dashboard token as sensitive.
+- The default launch mode now uses fully automatic execution so remote jobs can actually edit files. If you need a stricter setup, switch back with `CODEX_RELAY_EXECUTION_MODE=sandboxed` plus `CODEX_RELAY_SANDBOX` and `CODEX_RELAY_APPROVAL`.
 - `/pair` is intentionally restricted to the local host machine.
 - QR links and tokenized URLs can be invalidated by regenerating the token.
 - Prefer LAN, VPN, Tailscale, Cloudflare Tunnel, or an authenticated reverse proxy over exposing the port directly to the public internet.

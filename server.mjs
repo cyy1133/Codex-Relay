@@ -21,6 +21,9 @@ const HOST = process.env.HOST || "0.0.0.0";
 const MAX_THREADS = 50;
 const DEFAULT_WORKSPACE = __dirname;
 const CMD_EXE = process.env.ComSpec || "cmd.exe";
+const EXECUTION_MODE = process.env.CODEX_RELAY_EXECUTION_MODE || "bypass";
+const EXEC_SANDBOX = process.env.CODEX_RELAY_SANDBOX || "workspace-write";
+const EXEC_APPROVAL = process.env.CODEX_RELAY_APPROVAL || "never";
 const LOOPBACK_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 
 let settings = null;
@@ -637,11 +640,67 @@ function quoteCmdArg(arg) {
   return `"${String(arg).replace(/"/g, '""')}"`;
 }
 
+function buildExecutionArgs() {
+  if (EXECUTION_MODE === "sandboxed") {
+    return ["-a", EXEC_APPROVAL, "-s", EXEC_SANDBOX];
+  }
+  return ["--dangerously-bypass-approvals-and-sandbox"];
+}
+
 function buildCodexCommand(job) {
+  const executionArgs = buildExecutionArgs();
   const args = job.resumeThreadId
-    ? ["exec", "resume", "--json", "--skip-git-repo-check", "-o", "NUL", job.resumeThreadId, "-"]
-    : ["exec", "--json", "--skip-git-repo-check", "-o", "NUL", "-"];
+    ? [
+        ...executionArgs,
+        "exec",
+        "resume",
+        "--json",
+        "--skip-git-repo-check",
+        "-o",
+        "NUL",
+        job.resumeThreadId,
+        "-"
+      ]
+    : [
+        ...executionArgs,
+        "exec",
+        "--json",
+        "--skip-git-repo-check",
+        "-o",
+        "NUL",
+        "-"
+      ];
   return ["codex.cmd", ...args].map(quoteCmdArg).join(" ");
+}
+
+function normalizeWorkspaceRoot(workspaceRoot, { allowUnlisted = false } = {}) {
+  const trimmed = String(workspaceRoot || "").trim();
+  if (!trimmed) {
+    return settings.defaultWorkspaceRoot;
+  }
+  const listed = settings.workspaceRoots.find((item) => item === trimmed);
+  if (listed) {
+    return listed;
+  }
+  if (allowUnlisted) {
+    return trimmed;
+  }
+  return settings.defaultWorkspaceRoot;
+}
+
+async function resolveWorkspaceRootForJob({ workspaceRoot, resumeThreadId = null }) {
+  if (resumeThreadId) {
+    const thread = await loadThreadDetail(resumeThreadId);
+    if (!thread) {
+      throw new Error("Thread not found");
+    }
+    if (thread.cwd) {
+      return normalizeWorkspaceRoot(thread.cwd, {
+        allowUnlisted: true
+      });
+    }
+  }
+  return normalizeWorkspaceRoot(workspaceRoot);
 }
 
 function updateJob(jobId, patch) {
@@ -827,12 +886,10 @@ async function processQueue() {
 }
 
 function queueJob({ prompt, workspaceRoot, resumeThreadId = null }) {
-  const normalizedWorkspace =
-    settings.workspaceRoots.find((item) => item === workspaceRoot) || settings.defaultWorkspaceRoot;
   const job = {
     id: createId("job"),
     prompt,
-    workspaceRoot: normalizedWorkspace,
+    workspaceRoot,
     resumeThreadId,
     status: "queued",
     createdAt: nowIso(),
@@ -1011,9 +1068,13 @@ async function handleApi(req, res, url) {
       });
     }
     const resumeThreadId = body.resumeThreadId ? String(body.resumeThreadId).trim() : null;
+    const workspaceRoot = await resolveWorkspaceRootForJob({
+      workspaceRoot: String(body.workspaceRoot || settings.defaultWorkspaceRoot),
+      resumeThreadId
+    });
     const job = queueJob({
       prompt,
-      workspaceRoot: String(body.workspaceRoot || settings.defaultWorkspaceRoot),
+      workspaceRoot,
       resumeThreadId
     });
     return sendJson(res, 202, {
