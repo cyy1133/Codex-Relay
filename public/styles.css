@@ -543,6 +543,67 @@ a.primary:hover {
   margin-top: 0;
 }
 
+.composer-tools {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.composer-tools .hint {
+  margin: 0;
+}
+
+.upload-trigger {
+  width: fit-content;
+}
+
+.image-input {
+  display: none;
+}
+
+.attachment-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.85rem;
+}
+
+.attachment-card {
+  display: grid;
+  gap: 0.7rem;
+  padding: 0.9rem;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.attachment-thumb {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.attachment-meta {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.attachment-name {
+  margin: 0;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.attachment-size {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.attachment-remove {
+  width: 100%;
+}
+
 .composer-target {
   margin: 0;
 }
@@ -744,7 +805,8 @@ a.primary:hover {
 
   .thread-card,
   .message,
-  .info-card {
+  .info-card,
+  .attachment-card {
     padding: 0.9rem;
   }
 
@@ -752,6 +814,10 @@ a.primary:hover {
   .thread-card-bottom,
   .info-card-split {
     gap: 0.65rem;
+  }
+
+  .attachment-list {
+    grid-template-columns: 1fr;
   }
 
   .thread-card-top,

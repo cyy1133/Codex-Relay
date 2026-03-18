@@ -81,14 +81,20 @@
             </div>
             <form id="composer-form" class="chat-form">
               <p class="hint composer-target" id="composer-target"></p>
-            <label class="field">
+              <label class="field">
                 <span>Message</span>
                 <textarea id="prompt-input" rows="4" placeholder="Type a message to Codex."></textarea>
-            </label>
+              </label>
+              <div class="composer-tools">
+                <label class="ghost upload-trigger" for="image-input">Add Images</label>
+                <input id="image-input" class="image-input" type="file" accept="image/*" multiple>
+                <p class="hint">Attach up to 4 images with your next message.</p>
+              </div>
+              <div class="attachment-list hidden" id="attachment-list"></div>
               <div class="chat-actions">
-              <p class="hint" id="composer-hint">
+                <p class="hint" id="composer-hint">
                   Press Enter to send. Use Shift+Enter for a new line.
-              </p>
+                </p>
                 <button class="primary" type="submit">Send</button>
               </div>
             </form>

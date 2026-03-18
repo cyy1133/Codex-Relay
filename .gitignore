@@ -1,3 +1,4 @@
 node_modules/
 data/settings.json
 output/
+.playwright-cli/

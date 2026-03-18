@@ -39,7 +39,7 @@ English: `http://localhost:3210/pair` is the host-only pairing page. It bundles 
 | Area | 한국어 설명 | English Description |
 | --- | --- | --- |
 | `Threads` | 최근에 갱신된 스레드부터 카드형 목록으로 보여 주며, 모바일에서는 제목·요약·워크스페이스·메시지 수를 세로로 정리해 빠르게 훑어볼 수 있습니다. | Shows threads as newest-first cards, and on mobile it stacks title, summary, workspace, and message count vertically for fast scanning. |
-| `Conversation` | 선택한 스레드의 보이는 대화만 표시하고, 같은 패널 아래에서 바로 다음 메시지를 보낼 수 있습니다. | Shows only visible conversation history for the selected thread and keeps the next-message composer in the same panel. |
+| `Conversation` | 선택한 스레드의 보이는 대화만 표시하고, 같은 패널 아래에서 바로 다음 메시지를 보낼 수 있습니다. 메시지마다 이미지 최대 4장까지 첨부할 수 있습니다. | Shows only visible conversation history for the selected thread and keeps the next-message composer in the same panel. You can attach up to four images to each message. |
 | `Access` | 기본 워크스페이스, 공개 URL, Discord 알림 상태를 요약하고 `Alerts / QR Access` 탭으로 접속 도구를 나눠 보여줍니다. | Summarizes the default workspace, public URL, and Discord alert state, then splits access tools into `Alerts / QR Access` tabs. |
 | `QR Access` | 로컬 브라우저에서는 토큰 복사, 재발급, QR 링크 공유를 바로 처리하고, 원격 브라우저에서는 로컬 PC에서 열라는 안내를 보여줍니다. | On the host browser it exposes token copy, rotation, and QR link sharing; on remote browsers it shows a host-only notice. |
 | `Mobile Tabs` | 좁은 화면에서는 `Threads / Conversation / Access` 탭으로 섹션을 전환해 필요한 부분만 크게 봅니다. | On small screens, `Threads / Conversation / Access` tabs switch between focused sections instead of squeezing everything into one column. |
@@ -67,6 +67,10 @@ English:
 - `Inline chat composer`
   한국어: 별도 전송 패널 없이 `Conversation` 영역에서 바로 입력합니다. 스레드를 선택하면 이어쓰기, 선택하지 않으면 새 스레드 시작으로 동작합니다.
   English: The `Conversation` panel is the only composer. If a thread is selected, the message resumes it; otherwise it starts a new thread.
+
+- `Image attachments`
+  한국어: `Conversation` 패널의 `Add Images` 버튼으로 메시지마다 이미지 최대 4장, 각 파일 최대 10MB까지 첨부할 수 있습니다. 전송 전에는 썸네일과 파일 크기를 미리 확인하고 개별 제거할 수 있습니다.
+  English: The `Add Images` control in the `Conversation` panel lets you attach up to four images per message, with a 10 MB limit per file. Before sending, the UI shows a thumbnail, file size, and per-image remove action.
 
 - `Thread history and search`
   한국어: 최근 스레드를 마지막 갱신 시각 기준으로 위에서부터 정렬해 보여 주며, 제목, 첫 사용자 메시지, 마지막 응답 시각, 워크스페이스 경로, 메시지 수를 검색창과 함께 빠르게 훑어볼 수 있습니다. 모바일에서는 카드 메타데이터가 세로로 쌓여 글자가 깨지지 않습니다.

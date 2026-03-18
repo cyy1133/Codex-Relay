@@ -18,6 +18,7 @@ const CODEX_HOMES = Array.from(new Set([
 const STATIC_DIR = path.join(__dirname, "public");
 const DATA_DIR = path.join(__dirname, "data");
 const SETTINGS_PATH = path.join(DATA_DIR, "settings.json");
+const UPLOADS_DIR = path.join(__dirname, "output", "relay-uploads");
 const SESSIONS_DIRS = CODEX_HOMES.map((home) => path.join(home, "sessions"));
 const SESSION_INDEX_PATHS = CODEX_HOMES.map((home) => path.join(home, "session_index.jsonl"));
 const GLOBAL_STATE_PATHS = CODEX_HOMES.map((home) => path.join(home, ".codex-global-state.json"));
@@ -26,10 +27,21 @@ const HOST = process.env.HOST || "0.0.0.0";
 const MAX_THREADS = 50;
 const DEFAULT_WORKSPACE = __dirname;
 const CMD_EXE = process.env.ComSpec || "cmd.exe";
+const CODEX_CMD = process.env.CODEX_RELAY_CODEX_COMMAND || "codex.cmd";
 const EXECUTION_MODE = process.env.CODEX_RELAY_EXECUTION_MODE || "bypass";
 const EXEC_SANDBOX = process.env.CODEX_RELAY_SANDBOX || "workspace-write";
 const EXEC_APPROVAL = process.env.CODEX_RELAY_APPROVAL || "never";
+const MAX_IMAGE_ATTACHMENTS = 4;
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const LOOPBACK_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
+const IMAGE_EXTENSION_BY_MIME = new Map([
+  ["image/jpeg", ".jpg"],
+  ["image/png", ".png"],
+  ["image/webp", ".webp"],
+  ["image/gif", ".gif"],
+  ["image/svg+xml", ".svg"],
+  ["image/bmp", ".bmp"]
+]);
 
 let settings = null;
 let sessionFileMap = new Map();
@@ -159,6 +171,88 @@ async function fileExists(filePath) {
   } catch {
     return false;
   }
+}
+
+function sanitizeUploadBasename(fileName) {
+  const parsed = path.parse(String(fileName || "image"));
+  const normalized = parsed.name.normalize("NFKC").replace(/[^a-zA-Z0-9._-]+/g, "-");
+  return normalized.replace(/-+/g, "-").replace(/^-|-$/g, "") || "image";
+}
+
+function getUploadExtension(fileName, mimeType) {
+  const byMime = IMAGE_EXTENSION_BY_MIME.get(String(mimeType || "").toLowerCase());
+  if (byMime) {
+    return byMime;
+  }
+  const ext = path.extname(String(fileName || "")).toLowerCase();
+  if (/^\.[a-z0-9]{1,8}$/.test(ext)) {
+    return ext;
+  }
+  return ".png";
+}
+
+function parseImageDataUrl(dataUrl) {
+  const match = String(dataUrl || "").match(/^data:(image\/[-+.a-z0-9]+);base64,([a-z0-9+/=\r\n]+)$/i);
+  if (!match) {
+    throw new Error("Invalid image payload.");
+  }
+  return {
+    mimeType: match[1].toLowerCase(),
+    buffer: Buffer.from(match[2], "base64")
+  };
+}
+
+async function cleanupUploadedImages(images = []) {
+  for (const image of images) {
+    if (!image?.path) {
+      continue;
+    }
+    await fs.unlink(image.path).catch(() => {});
+  }
+}
+
+async function persistUploadedImages(images = []) {
+  if (!Array.isArray(images) || !images.length) {
+    return [];
+  }
+
+  if (images.length > MAX_IMAGE_ATTACHMENTS) {
+    throw new Error(`You can attach up to ${MAX_IMAGE_ATTACHMENTS} images at once.`);
+  }
+
+  await ensureDir(UPLOADS_DIR);
+  const persisted = [];
+
+  try {
+    for (const [index, image] of images.entries()) {
+      const { mimeType, buffer } = parseImageDataUrl(image?.dataUrl);
+      if (!mimeType.startsWith("image/")) {
+        throw new Error("Only image uploads are supported.");
+      }
+      if (buffer.byteLength > MAX_IMAGE_BYTES) {
+        throw new Error(`Each image must be ${Math.floor(MAX_IMAGE_BYTES / (1024 * 1024))}MB or smaller.`);
+      }
+
+      const fileName = typeof image?.name === "string" ? image.name : `image-${index + 1}`;
+      const extension = getUploadExtension(fileName, image?.type || mimeType);
+      const safeBaseName = sanitizeUploadBasename(fileName);
+      const uploadId = `${Date.now()}-${index + 1}-${crypto.randomUUID()}`;
+      const filePath = path.join(UPLOADS_DIR, `${uploadId}-${safeBaseName}${extension}`);
+
+      await fs.writeFile(filePath, buffer);
+      persisted.push({
+        name: fileName,
+        mimeType,
+        path: filePath,
+        size: buffer.byteLength
+      });
+    }
+  } catch (error) {
+    await cleanupUploadedImages(persisted);
+    throw error;
+  }
+
+  return persisted;
 }
 
 function guessContentType(filePath) {
@@ -356,14 +450,54 @@ async function ensureThreadFile(threadId) {
 }
 
 function messageTextFromContent(content) {
+  const normalizeContentText = (value) =>
+    String(value || "")
+      .replace(/<image\b[^>]*>\s*([\s\S]*?)\s*<\/image>/gi, (_, inner) => {
+        const cleaned = String(inner || "").replace(/\s+/g, " ").trim();
+        return cleaned || "[Attached image]";
+      })
+      .replace(/\s+/g, " ")
+      .trim();
+
+  if (typeof content === "string") {
+    return normalizeContentText(content);
+  }
   if (!Array.isArray(content)) {
     return "";
   }
-  return content
-    .map((part) => firstDefined(part?.text, part?.output_text, part?.input_text, ""))
-    .filter(Boolean)
-    .join("\n")
-    .trim();
+
+  const lines = [];
+  let insideImageBlock = false;
+
+  for (const part of content) {
+    const rawText = firstDefined(part?.text, part?.output_text, part?.input_text, "");
+    const type = String(part?.type || "").toLowerCase();
+    const isImagePart = type.includes("image") || String(part?.mime_type || "").startsWith("image/");
+    const hasOpenImageTag = typeof rawText === "string" && /<image\b[^>]*>/i.test(rawText);
+    const hasCloseImageTag = typeof rawText === "string" && /<\/image>/i.test(rawText);
+
+    if (hasOpenImageTag) {
+      lines.push(`[Attached image${part?.filename ? `: ${part.filename}` : ""}]`);
+      insideImageBlock = !hasCloseImageTag;
+    } else if (isImagePart && !insideImageBlock) {
+      lines.push(`[Attached image${part?.filename ? `: ${part.filename}` : ""}]`);
+    }
+
+    if (typeof rawText === "string" && rawText.trim()) {
+      const cleanedText = normalizeContentText(
+        rawText.replace(/<image\b[^>]*>/gi, "").replace(/<\/image>/gi, "")
+      );
+      if (cleanedText && !(hasOpenImageTag && cleanedText === "[Attached image]")) {
+        lines.push(cleanedText);
+      }
+    }
+
+    if (hasCloseImageTag) {
+      insideImageBlock = false;
+    }
+  }
+
+  return lines.filter(Boolean).join("\n").trim();
 }
 
 function isInjectedUserContext(text) {
@@ -640,6 +774,7 @@ function getJobsSnapshot() {
       finishedAt: job.finishedAt,
       threadId: job.threadId,
       resumeThreadId: job.resumeThreadId || null,
+      imageCount: job.images?.length || 0,
       lastAssistantMessage: trimText(job.lastAssistantMessage || "", 280),
       error: job.error || "",
       stderrTail: trimText(job.stderr || "", 280)
@@ -653,13 +788,6 @@ function broadcast(event, payload) {
   }
 }
 
-function quoteCmdArg(arg) {
-  if (/^[A-Za-z0-9_./:=+-]+$/.test(arg)) {
-    return arg;
-  }
-  return `"${String(arg).replace(/"/g, '""')}"`;
-}
-
 function buildExecutionArgs() {
   if (EXECUTION_MODE === "sandboxed") {
     return ["-a", EXEC_APPROVAL, "-s", EXEC_SANDBOX];
@@ -667,13 +795,15 @@ function buildExecutionArgs() {
   return ["--dangerously-bypass-approvals-and-sandbox"];
 }
 
-function buildCodexCommand(job) {
+function buildCodexInvocation(job) {
   const executionArgs = buildExecutionArgs();
+  const imageArgs = (job.images || []).flatMap((image) => ["-i", image.path]);
   const args = job.resumeThreadId
     ? [
         ...executionArgs,
         "exec",
         "resume",
+        ...imageArgs,
         "--json",
         "--skip-git-repo-check",
         "-o",
@@ -684,13 +814,17 @@ function buildCodexCommand(job) {
     : [
         ...executionArgs,
         "exec",
+        ...imageArgs,
         "--json",
         "--skip-git-repo-check",
         "-o",
         "NUL",
         "-"
       ];
-  return ["codex.cmd", ...args].map(quoteCmdArg).join(" ");
+  return {
+    command: CODEX_CMD,
+    args
+  };
 }
 
 function normalizeWorkspaceRoot(workspaceRoot, { allowUnlisted = false } = {}) {
@@ -820,73 +954,85 @@ async function runJob(job) {
     error: ""
   });
 
-  const command = buildCodexCommand(job);
-  const child = spawn(CMD_EXE, ["/d", "/s", "/c", command], {
-    cwd: job.workspaceRoot,
-    env: {
-      ...process.env,
-      RUST_LOG: "error"
-    },
-    stdio: ["pipe", "pipe", "pipe"]
-  });
-
-  child.stdin.write(job.prompt);
-  child.stdin.end();
-
-  let stdoutBuffer = "";
   let stderrBuffer = "";
 
-  child.stdout.setEncoding("utf8");
-  child.stdout.on("data", (chunk) => {
-    stdoutBuffer += chunk;
-    const lines = stdoutBuffer.split(/\r?\n/);
-    stdoutBuffer = lines.pop() || "";
-    for (const line of lines) {
-      const event = safeJsonParse(line, null);
-      if (!event || typeof event !== "object") {
-        continue;
+  try {
+    const invocation = buildCodexInvocation(job);
+    const child = spawn(CMD_EXE, ["/d", "/c", invocation.command, ...invocation.args], {
+      cwd: job.workspaceRoot,
+      env: {
+        ...process.env,
+        RUST_LOG: "error"
+      },
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true
+    });
+
+    child.stdin.write(job.prompt);
+    child.stdin.end();
+
+    let stdoutBuffer = "";
+
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdoutBuffer += chunk;
+      const lines = stdoutBuffer.split(/\r?\n/);
+      stdoutBuffer = lines.pop() || "";
+      for (const line of lines) {
+        const event = safeJsonParse(line, null);
+        if (!event || typeof event !== "object") {
+          continue;
+        }
+        if (event.type === "thread.started") {
+          updateJob(job.id, { threadId: event.thread_id });
+        }
+        if (event.type === "item.completed" && event.item?.type === "agent_message") {
+          updateJob(job.id, { lastAssistantMessage: event.item.text || "" });
+        }
+        broadcast("job-event", {
+          jobId: job.id,
+          event
+        });
       }
-      if (event.type === "thread.started") {
-        updateJob(job.id, { threadId: event.thread_id });
-      }
-      if (event.type === "item.completed" && event.item?.type === "agent_message") {
+    });
+
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => {
+      stderrBuffer += chunk;
+      updateJob(job.id, {
+        stderr: trimText(stderrBuffer, 1600)
+      });
+    });
+
+    const exitCode = await new Promise((resolve, reject) => {
+      child.on("error", reject);
+      child.on("close", resolve);
+    });
+
+    if (stdoutBuffer.trim()) {
+      const event = safeJsonParse(stdoutBuffer.trim(), null);
+      if (event?.type === "item.completed" && event.item?.type === "agent_message") {
         updateJob(job.id, { lastAssistantMessage: event.item.text || "" });
       }
-      broadcast("job-event", {
-        jobId: job.id,
-        event
+    }
+
+    if (exitCode === 0) {
+      await finalizeJob(job, "completed");
+    } else {
+      updateJob(job.id, {
+        error: trimText(stderrBuffer || `Codex exited with code ${exitCode}`, 1000)
       });
+      await finalizeJob(job, "failed");
     }
-  });
-
-  child.stderr.setEncoding("utf8");
-  child.stderr.on("data", (chunk) => {
-    stderrBuffer += chunk;
+  } catch (error) {
     updateJob(job.id, {
-      stderr: trimText(stderrBuffer, 1600)
-    });
-  });
-
-  const exitCode = await new Promise((resolve) => {
-    child.on("close", resolve);
-  });
-
-  if (stdoutBuffer.trim()) {
-    const event = safeJsonParse(stdoutBuffer.trim(), null);
-    if (event?.type === "item.completed" && event.item?.type === "agent_message") {
-      updateJob(job.id, { lastAssistantMessage: event.item.text || "" });
-    }
-  }
-
-  if (exitCode === 0) {
-    await finalizeJob(job, "completed");
-  } else {
-    updateJob(job.id, {
-      error: trimText(stderrBuffer || `Codex exited with code ${exitCode}`, 1000)
+      error: trimText(error.message || String(error), 1000)
     });
     await finalizeJob(job, "failed");
+  } finally {
+    await cleanupUploadedImages(job.images);
+    activeJobId = null;
   }
-  activeJobId = null;
 }
 
 async function processQueue() {
@@ -905,12 +1051,13 @@ async function processQueue() {
   isProcessingQueue = false;
 }
 
-function queueJob({ prompt, workspaceRoot, resumeThreadId = null }) {
+function queueJob({ prompt, workspaceRoot, resumeThreadId = null, images = [] }) {
   const job = {
     id: createId("job"),
     prompt,
     workspaceRoot,
     resumeThreadId,
+    images,
     status: "queued",
     createdAt: nowIso(),
     startedAt: null,
@@ -1092,10 +1239,12 @@ async function handleApi(req, res, url) {
       workspaceRoot: String(body.workspaceRoot || settings.defaultWorkspaceRoot),
       resumeThreadId
     });
+    const images = await persistUploadedImages(body.images || []);
     const job = queueJob({
       prompt,
       workspaceRoot,
-      resumeThreadId
+      resumeThreadId,
+      images
     });
     return sendJson(res, 202, {
       job

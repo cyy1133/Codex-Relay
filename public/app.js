@@ -9,6 +9,7 @@ const state = {
   selectedThread: null,
   requestedThreadId: urlState.searchParams.get("thread") || "",
   pendingNewJobId: "",
+  pendingImages: [],
   searchText: "",
   eventSource: null,
   activeLayoutTab: "conversation",
@@ -29,6 +30,8 @@ const messageList = document.querySelector("#message-list");
 const newThreadButton = document.querySelector("#new-thread-button");
 const settingsWorkspace = document.querySelector("#settings-workspace");
 const promptInput = document.querySelector("#prompt-input");
+const imageInput = document.querySelector("#image-input");
+const attachmentList = document.querySelector("#attachment-list");
 const composerForm = document.querySelector("#composer-form");
 const composerTarget = document.querySelector("#composer-target");
 const composerHint = document.querySelector("#composer-hint");
@@ -62,6 +65,8 @@ const copyTokenInlineButton = document.querySelector("#copy-token-inline");
 const regenerateTokenInlineButton = document.querySelector("#regenerate-token-inline");
 const pairLinksInline = document.querySelector("#pair-links-inline");
 const pairStatusInline = document.querySelector("#pair-status-inline");
+const MAX_PENDING_IMAGES = 4;
+const MAX_PENDING_IMAGE_BYTES = 10 * 1024 * 1024;
 
 function apiFetch(route, options = {}) {
   return fetch(route, {
@@ -111,6 +116,27 @@ async function copyText(text) {
   fallback.select();
   document.execCommand("copy");
   fallback.remove();
+}
+
+function createClientId() {
+  return window.crypto?.randomUUID?.() || `image_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function formatBytes(bytes) {
+  const value = Number(bytes || 0);
+  if (value < 1024 * 1024) {
+    return `${Math.max(1, Math.round(value / 1024))} KB`;
+  }
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error(`Failed to read ${file.name || "image"}.`));
+    reader.readAsDataURL(file);
+  });
 }
 
 function setLoggedIn(isLoggedIn) {
@@ -246,6 +272,79 @@ function renderSettingsSummary() {
   }
 
   summaryDeliveryMode.textContent = "Not configured";
+}
+
+function renderPendingImages() {
+  if (!state.pendingImages.length) {
+    attachmentList.innerHTML = "";
+    attachmentList.classList.add("hidden");
+    return;
+  }
+
+  attachmentList.classList.remove("hidden");
+  attachmentList.innerHTML = state.pendingImages
+    .map((image) => `
+      <article class="attachment-card" data-image-id="${escapeAttr(image.id)}">
+        <img class="attachment-thumb" src="${escapeAttr(image.dataUrl)}" alt="${escapeAttr(image.name)}">
+        <div class="attachment-meta">
+          <strong class="attachment-name">${escapeHtml(image.name)}</strong>
+          <span class="attachment-size">${escapeHtml(formatBytes(image.size))}</span>
+        </div>
+        <button class="ghost attachment-remove" type="button" data-remove-image="${escapeAttr(image.id)}">Remove</button>
+      </article>
+    `)
+    .join("");
+}
+
+function clearPendingImages() {
+  state.pendingImages = [];
+  imageInput.value = "";
+  renderPendingImages();
+}
+
+async function addPendingImages(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) {
+    return;
+  }
+
+  const remainingSlots = MAX_PENDING_IMAGES - state.pendingImages.length;
+  if (remainingSlots <= 0) {
+    composerHint.textContent = `You can attach up to ${MAX_PENDING_IMAGES} images at once.`;
+    imageInput.value = "";
+    return;
+  }
+
+  const nextFiles = files.filter((file) => String(file.type || "").startsWith("image/")).slice(0, remainingSlots);
+  const loaded = [];
+
+  for (const file of nextFiles) {
+    if (file.size > MAX_PENDING_IMAGE_BYTES) {
+      composerHint.textContent = `Each image must be ${(MAX_PENDING_IMAGE_BYTES / (1024 * 1024)).toFixed(0)}MB or smaller.`;
+      continue;
+    }
+
+    loaded.push({
+      id: createClientId(),
+      name: file.name || "image",
+      type: file.type || "image/png",
+      size: file.size || 0,
+      dataUrl: await fileToDataUrl(file)
+    });
+  }
+
+  state.pendingImages.push(...loaded);
+  renderPendingImages();
+  imageInput.value = "";
+
+  if (files.length > remainingSlots) {
+    composerHint.textContent = `Only the first ${remainingSlots} image${remainingSlots === 1 ? "" : "s"} were added.`;
+    return;
+  }
+
+  if (loaded.length) {
+    composerHint.textContent = `${state.pendingImages.length} image${state.pendingImages.length === 1 ? "" : "s"} attached.`;
+  }
 }
 
 function renderPairingLinks() {
@@ -443,10 +542,13 @@ function renderJobs() {
     .slice(0, 3)
     .map((job) => {
       const statusClass = `status-card ${job.status}`;
+      const promptPreview = job.imageCount
+        ? `${job.promptPreview || ""} (+${job.imageCount} image${job.imageCount === 1 ? "" : "s"})`
+        : job.promptPreview || "";
       return `
         <div class="${statusClass}">
           <strong>${escapeHtml(job.status.toUpperCase())}</strong>
-          <p>${escapeHtml(job.promptPreview || "")}</p>
+          <p>${escapeHtml(promptPreview)}</p>
           <span>${escapeHtml(job.workspaceRoot || "")}</span>
         </div>
       `;
@@ -632,6 +734,21 @@ threadSearch.addEventListener("input", (event) => {
   renderThreads();
 });
 
+imageInput.addEventListener("change", async (event) => {
+  await addPendingImages(event.target.files).catch((error) => {
+    composerHint.textContent = error.message;
+  });
+});
+
+attachmentList.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-remove-image]");
+  if (!button) {
+    return;
+  }
+  state.pendingImages = state.pendingImages.filter((image) => image.id !== button.dataset.removeImage);
+  renderPendingImages();
+});
+
 refreshButton.addEventListener("click", async () => {
   const threadsPayload = await apiFetch("/api/threads");
   const jobsPayload = await apiFetch("/api/jobs");
@@ -656,7 +773,12 @@ composerForm.addEventListener("submit", async (event) => {
   }
 
   const payload = {
-    prompt
+    prompt,
+    images: state.pendingImages.map((image) => ({
+      name: image.name,
+      type: image.type,
+      dataUrl: image.dataUrl
+    }))
   };
   const isNewThread = !state.selectedThreadId;
 
@@ -667,38 +789,44 @@ composerForm.addEventListener("submit", async (event) => {
     payload.workspaceRoot = getDefaultWorkspace();
   }
 
-  const response = await apiFetch("/api/threads", {
-    method: "POST",
-    body: JSON.stringify(payload)
-  });
+  try {
+    const response = await apiFetch("/api/threads", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
 
-  promptInput.value = "";
-  if (isNewThread) {
-    state.requestedThreadId = "";
-    state.selectedThread = null;
-    state.selectedThreadId = null;
-    state.pendingNewJobId = response.job?.id || "";
-  }
-  composerHint.textContent = isNewThread ? "Queued as a new thread." : "Queued for the current thread.";
-  if (isNewThread && response.job?.id) {
-    const syncNewThread = async () => {
-      for (let attempt = 0; attempt < 18; attempt += 1) {
-        const jobsPayload = await apiFetch("/api/jobs");
-        state.jobs = jobsPayload.jobs;
-        renderJobs();
-        const queuedJob = state.jobs.find((job) => job.id === response.job.id);
-        if (queuedJob?.threadId) {
-          const threadsPayload = await apiFetch("/api/threads");
-          state.threads = threadsPayload.threads;
-          renderThreads();
-          await loadThread(queuedJob.threadId);
-          composerHint.textContent = "New thread started.";
-          return;
+    promptInput.value = "";
+    clearPendingImages();
+
+    if (isNewThread) {
+      state.requestedThreadId = "";
+      state.selectedThread = null;
+      state.selectedThreadId = null;
+      state.pendingNewJobId = response.job?.id || "";
+    }
+    composerHint.textContent = isNewThread ? "Queued as a new thread." : "Queued for the current thread.";
+    if (isNewThread && response.job?.id) {
+      const syncNewThread = async () => {
+        for (let attempt = 0; attempt < 18; attempt += 1) {
+          const jobsPayload = await apiFetch("/api/jobs");
+          state.jobs = jobsPayload.jobs;
+          renderJobs();
+          const queuedJob = state.jobs.find((job) => job.id === response.job.id);
+          if (queuedJob?.threadId) {
+            const threadsPayload = await apiFetch("/api/threads");
+            state.threads = threadsPayload.threads;
+            renderThreads();
+            await loadThread(queuedJob.threadId);
+            composerHint.textContent = "New thread started.";
+            return;
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 500));
         }
-        await new Promise((resolve) => window.setTimeout(resolve, 500));
-      }
-    };
-    void syncNewThread().catch(() => {});
+      };
+      void syncNewThread().catch(() => {});
+    }
+  } catch (error) {
+    composerHint.textContent = error.message;
   }
 });
 
