@@ -508,6 +508,21 @@ a.primary:hover {
   background: rgba(245, 143, 76, 0.1);
 }
 
+.message.optimistic {
+  border-style: dashed;
+  position: relative;
+}
+
+.message.optimistic.queued {
+  border-color: rgba(217, 192, 107, 0.58);
+  background: rgba(217, 192, 107, 0.08);
+}
+
+.message.optimistic.running {
+  border-color: rgba(112, 213, 156, 0.48);
+  background: rgba(112, 213, 156, 0.09);
+}
+
 .message-head {
   display: flex;
   flex-wrap: wrap;
@@ -522,6 +537,20 @@ a.primary:hover {
   padding: 0.22rem 0.52rem;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
+}
+
+.message.optimistic .phase {
+  font-weight: 700;
+}
+
+.message.optimistic.queued .phase {
+  background: rgba(217, 192, 107, 0.18);
+  color: #f1db97;
+}
+
+.message.optimistic.running .phase {
+  background: rgba(112, 213, 156, 0.16);
+  color: #b6f0cb;
 }
 
 .message pre {

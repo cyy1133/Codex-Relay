@@ -9,6 +9,7 @@ const state = {
   selectedThread: null,
   requestedThreadId: urlState.searchParams.get("thread") || "",
   pendingNewJobId: "",
+  optimisticMessages: [],
   pendingImages: [],
   searchText: "",
   eventSource: null,
@@ -443,6 +444,71 @@ function renderComposerState() {
   promptInput.placeholder = "Type a message to start a new thread.";
 }
 
+function threadHasUserMessage(thread, text) {
+  const expected = String(text || "").trim();
+  if (!expected || !thread?.messages?.length) {
+    return false;
+  }
+  return thread.messages.some((message) => message.role === "user" && String(message.text || "").trim() === expected);
+}
+
+function syncOptimisticMessages() {
+  state.optimisticMessages = state.optimisticMessages.filter((entry) => {
+    const job = state.jobs.find((item) => item.id === entry.jobId);
+    if (!job) {
+      return false;
+    }
+
+    entry.status = job.status || entry.status;
+    if (job.threadId) {
+      entry.threadId = job.threadId;
+    }
+
+    if (job.status === "failed") {
+      return false;
+    }
+
+    if (state.selectedThread && entry.threadId === state.selectedThread.id && threadHasUserMessage(state.selectedThread, entry.text)) {
+      return false;
+    }
+
+    if (
+      state.selectedThread &&
+      entry.threadId === null &&
+      entry.targetThreadId === state.selectedThread.id &&
+      threadHasUserMessage(state.selectedThread, entry.text)
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function getVisibleOptimisticMessages() {
+  if (state.selectedThreadId) {
+    return state.optimisticMessages.filter((entry) =>
+      entry.targetThreadId === state.selectedThreadId || entry.threadId === state.selectedThreadId
+    );
+  }
+  return state.optimisticMessages.filter((entry) => !entry.targetThreadId);
+}
+
+function renderMessageCard(message, { optimistic = false } = {}) {
+  const roleClass = message.role === "assistant" ? "message assistant" : "message user";
+  const optimisticClass = optimistic ? ` optimistic ${message.status || "queued"}` : "";
+  return `
+    <article class="${roleClass}${optimisticClass}">
+      <div class="message-head">
+        <span class="role">${escapeHtml(message.role)}</span>
+        <span class="phase">${escapeHtml(message.phase)}</span>
+        <span class="stamp">${escapeHtml(relativeTime(message.timestamp || message.createdAt || new Date().toISOString()))}</span>
+      </div>
+      <pre>${escapeHtml(message.text)}</pre>
+    </article>
+  `;
+}
+
 function clearSelectedThread() {
   state.selectedThreadId = null;
   state.selectedThread = null;
@@ -493,10 +559,28 @@ function renderThreads() {
 
 function renderThreadDetail() {
   const thread = state.selectedThread;
+  const optimisticMessages = getVisibleOptimisticMessages();
   if (!thread) {
     threadTitle.textContent = "New Chat";
     threadMeta.innerHTML = `<span>${escapeHtml(getDefaultWorkspace() || "Default workspace not set")}</span>`;
-    messageList.innerHTML = `<div class="empty-state"><p>Your next message will start a new thread in the default workspace.</p></div>`;
+    if (!optimisticMessages.length) {
+      messageList.innerHTML = `<div class="empty-state"><p>Your next message will start a new thread in the default workspace.</p></div>`;
+    } else {
+      messageList.innerHTML = optimisticMessages
+        .map((message) =>
+          renderMessageCard(
+            {
+              role: "user",
+              phase: message.status === "running" ? "running" : "queued",
+              timestamp: message.createdAt,
+              text: message.text,
+              status: message.status
+            },
+            { optimistic: true }
+          )
+        )
+        .join("");
+    }
     renderComposerState();
     return;
   }
@@ -508,26 +592,28 @@ function renderThreadDetail() {
   `;
 
   const messages = thread.messages || [];
-  if (!messages.length) {
+  if (!messages.length && !optimisticMessages.length) {
     messageList.innerHTML = `<div class="empty-state"><p>No visible user or assistant messages yet.</p></div>`;
     renderComposerState();
     return;
   }
 
   messageList.innerHTML = messages
-    .map((message) => {
-      const roleClass = message.role === "assistant" ? "message assistant" : "message user";
-      return `
-        <article class="${roleClass}">
-          <div class="message-head">
-            <span class="role">${escapeHtml(message.role)}</span>
-            <span class="phase">${escapeHtml(message.phase)}</span>
-            <span class="stamp">${escapeHtml(relativeTime(message.timestamp))}</span>
-          </div>
-          <pre>${escapeHtml(message.text)}</pre>
-        </article>
-      `;
-    })
+    .map((message) => renderMessageCard(message))
+    .concat(
+      optimisticMessages.map((message) =>
+        renderMessageCard(
+          {
+            role: "user",
+            phase: message.status === "running" ? "running" : "queued",
+            timestamp: message.createdAt,
+            text: message.text,
+            status: message.status
+          },
+          { optimistic: true }
+        )
+      )
+    )
     .join("");
   renderComposerState();
 }
@@ -602,6 +688,7 @@ async function loadThread(threadId, { updateAddressBar = true } = {}) {
   state.requestedThreadId = threadId;
   state.pendingNewJobId = "";
   upsertThreadSummary(payload.thread);
+  syncOptimisticMessages();
   renderThreads();
   renderThreadDetail();
   setLayoutTab("conversation");
@@ -615,6 +702,7 @@ async function bootstrap() {
   state.settings = payload.settings;
   state.threads = payload.threads;
   state.jobs = payload.jobs;
+  syncOptimisticMessages();
 
   setLoggedIn(true);
   renderWorkspaceOptions();
@@ -648,6 +736,7 @@ function connectEvents() {
 
   state.eventSource.addEventListener("jobs", (event) => {
     state.jobs = JSON.parse(event.data);
+    syncOptimisticMessages();
     renderJobs();
 
     if (!state.pendingNewJobId) {
@@ -679,9 +768,12 @@ function connectEvents() {
   state.eventSource.addEventListener("thread", (event) => {
     const payload = JSON.parse(event.data);
     upsertThreadSummary(payload);
-    renderThreads();
     if (payload.id === state.selectedThreadId) {
       state.selectedThread = payload;
+    }
+    syncOptimisticMessages();
+    renderThreads();
+    if (payload.id === state.selectedThreadId) {
       renderThreadDetail();
     }
   });
@@ -794,6 +886,8 @@ composerForm.addEventListener("submit", async (event) => {
       method: "POST",
       body: JSON.stringify(payload)
     });
+    const continuationMode = response.job?.continuationMode || (isNewThread ? "new" : "resume");
+    const followNewThread = isNewThread || continuationMode === "fork";
 
     promptInput.value = "";
     clearPendingImages();
@@ -802,10 +896,28 @@ composerForm.addEventListener("submit", async (event) => {
       state.requestedThreadId = "";
       state.selectedThread = null;
       state.selectedThreadId = null;
+    }
+    if (followNewThread) {
       state.pendingNewJobId = response.job?.id || "";
     }
-    composerHint.textContent = isNewThread ? "Queued as a new thread." : "Queued for the current thread.";
-    if (isNewThread && response.job?.id) {
+    if (continuationMode === "fork") {
+      composerHint.textContent = "Queued as a linked new thread.";
+    } else {
+      composerHint.textContent = isNewThread ? "Queued as a new thread." : "Queued for the current thread.";
+    }
+
+    state.optimisticMessages.push({
+      jobId: response.job?.id || createClientId(),
+      text: prompt,
+      createdAt: new Date().toISOString(),
+      status: "queued",
+      targetThreadId: isNewThread ? null : state.selectedThreadId,
+      threadId: null,
+      continuationMode
+    });
+    renderThreadDetail();
+
+    if (followNewThread && response.job?.id) {
       const syncNewThread = async () => {
         for (let attempt = 0; attempt < 18; attempt += 1) {
           const jobsPayload = await apiFetch("/api/jobs");
@@ -817,7 +929,7 @@ composerForm.addEventListener("submit", async (event) => {
             state.threads = threadsPayload.threads;
             renderThreads();
             await loadThread(queuedJob.threadId);
-            composerHint.textContent = "New thread started.";
+            composerHint.textContent = continuationMode === "fork" ? "Linked thread started." : "New thread started.";
             return;
           }
           await new Promise((resolve) => window.setTimeout(resolve, 500));

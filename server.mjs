@@ -33,6 +33,8 @@ const EXEC_SANDBOX = process.env.CODEX_RELAY_SANDBOX || "workspace-write";
 const EXEC_APPROVAL = process.env.CODEX_RELAY_APPROVAL || "never";
 const MAX_IMAGE_ATTACHMENTS = 4;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const CONTINUATION_CONTEXT_MESSAGE_LIMIT = 12;
+const CONTINUATION_CONTEXT_CHAR_LIMIT = 6000;
 const LOOPBACK_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 const IMAGE_EXTENSION_BY_MIME = new Map([
   ["image/jpeg", ".jpg"],
@@ -693,6 +695,73 @@ async function loadThreadDetail(threadId) {
   return parseThreadFile(filePath);
 }
 
+function formatContinuationContext(thread, userPrompt) {
+  const visibleMessages = Array.isArray(thread?.messages)
+    ? thread.messages.filter((message) => message?.role === "user" || message?.role === "assistant")
+    : [];
+  const recentMessages = visibleMessages.slice(-CONTINUATION_CONTEXT_MESSAGE_LIMIT);
+  const history = trimText(
+    recentMessages
+      .map((message) => `${message.role === "assistant" ? "Assistant" : "User"}: ${message.text}`)
+      .join("\n\n"),
+    CONTINUATION_CONTEXT_CHAR_LIMIT
+  );
+
+  return [
+    "Continue this earlier conversation in a new Codex exec thread.",
+    "Do not assume you are still inside the original live desktop session.",
+    thread?.id ? `Original thread id: ${thread.id}` : "",
+    thread?.source ? `Original thread source: ${thread.source}` : "",
+    history ? `Recent visible conversation:\n${history}` : "",
+    `New user message:\n${String(userPrompt || "").trim()}`
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+async function resolveJobRequest({ prompt, workspaceRoot, resumeThreadId = null }) {
+  const normalizedPrompt = String(prompt || "").trim();
+  if (!resumeThreadId) {
+    return {
+      prompt: normalizedPrompt,
+      userPrompt: normalizedPrompt,
+      workspaceRoot: normalizeWorkspaceRoot(workspaceRoot),
+      resumeThreadId: null,
+      requestedThreadId: null,
+      continuationMode: "new"
+    };
+  }
+
+  const thread = await loadThreadDetail(resumeThreadId);
+  if (!thread) {
+    throw new Error("Thread not found");
+  }
+
+  const resolvedWorkspaceRoot = normalizeWorkspaceRoot(thread.cwd || workspaceRoot, {
+    allowUnlisted: true
+  });
+
+  if (String(thread.source || "").toLowerCase() === "exec") {
+    return {
+      prompt: normalizedPrompt,
+      userPrompt: normalizedPrompt,
+      workspaceRoot: resolvedWorkspaceRoot,
+      resumeThreadId,
+      requestedThreadId: resumeThreadId,
+      continuationMode: "resume"
+    };
+  }
+
+  return {
+    prompt: formatContinuationContext(thread, normalizedPrompt),
+    userPrompt: normalizedPrompt,
+    workspaceRoot: resolvedWorkspaceRoot,
+    resumeThreadId: null,
+    requestedThreadId: resumeThreadId,
+    continuationMode: "fork"
+  };
+}
+
 function getPublicSettings() {
   return {
     workspaceRoots: settings.workspaceRoots,
@@ -768,12 +837,14 @@ function getJobsSnapshot() {
       id: job.id,
       status: job.status,
       workspaceRoot: job.workspaceRoot,
-      promptPreview: trimText(job.prompt, 160),
+      promptPreview: trimText(job.userPrompt || job.prompt, 160),
       createdAt: job.createdAt,
       startedAt: job.startedAt,
       finishedAt: job.finishedAt,
       threadId: job.threadId,
       resumeThreadId: job.resumeThreadId || null,
+      requestedThreadId: job.requestedThreadId || null,
+      continuationMode: job.continuationMode || (job.resumeThreadId ? "resume" : "new"),
       imageCount: job.images?.length || 0,
       lastAssistantMessage: trimText(job.lastAssistantMessage || "", 280),
       error: job.error || "",
@@ -798,7 +869,7 @@ function buildExecutionArgs() {
 function buildCodexInvocation(job) {
   const executionArgs = buildExecutionArgs();
   const imageArgs = (job.images || []).flatMap((image) => ["-i", image.path]);
-  const args = job.resumeThreadId
+  const args = job.continuationMode === "resume" && job.resumeThreadId
     ? [
         ...executionArgs,
         "exec",
@@ -840,21 +911,6 @@ function normalizeWorkspaceRoot(workspaceRoot, { allowUnlisted = false } = {}) {
     return trimmed;
   }
   return settings.defaultWorkspaceRoot;
-}
-
-async function resolveWorkspaceRootForJob({ workspaceRoot, resumeThreadId = null }) {
-  if (resumeThreadId) {
-    const thread = await loadThreadDetail(resumeThreadId);
-    if (!thread) {
-      throw new Error("Thread not found");
-    }
-    if (thread.cwd) {
-      return normalizeWorkspaceRoot(thread.cwd, {
-        allowUnlisted: true
-      });
-    }
-  }
-  return normalizeWorkspaceRoot(workspaceRoot);
 }
 
 function updateJob(jobId, patch) {
@@ -1051,12 +1107,23 @@ async function processQueue() {
   isProcessingQueue = false;
 }
 
-function queueJob({ prompt, workspaceRoot, resumeThreadId = null, images = [] }) {
+function queueJob({
+  prompt,
+  userPrompt = prompt,
+  workspaceRoot,
+  resumeThreadId = null,
+  requestedThreadId = null,
+  continuationMode = "new",
+  images = []
+}) {
   const job = {
     id: createId("job"),
     prompt,
+    userPrompt,
     workspaceRoot,
     resumeThreadId,
+    requestedThreadId,
+    continuationMode,
     images,
     status: "queued",
     createdAt: nowIso(),
@@ -1235,15 +1302,19 @@ async function handleApi(req, res, url) {
       });
     }
     const resumeThreadId = body.resumeThreadId ? String(body.resumeThreadId).trim() : null;
-    const workspaceRoot = await resolveWorkspaceRootForJob({
+    const jobRequest = await resolveJobRequest({
+      prompt,
       workspaceRoot: String(body.workspaceRoot || settings.defaultWorkspaceRoot),
       resumeThreadId
     });
     const images = await persistUploadedImages(body.images || []);
     const job = queueJob({
-      prompt,
-      workspaceRoot,
-      resumeThreadId,
+      prompt: jobRequest.prompt,
+      userPrompt: jobRequest.userPrompt,
+      workspaceRoot: jobRequest.workspaceRoot,
+      resumeThreadId: jobRequest.resumeThreadId,
+      requestedThreadId: jobRequest.requestedThreadId,
+      continuationMode: jobRequest.continuationMode,
       images
     });
     return sendJson(res, 202, {
